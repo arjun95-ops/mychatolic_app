@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // Pages
 import 'package:mychatolic_app/pages/home_screen.dart'; 
 import 'package:mychatolic_app/pages/create_post_screen.dart'; 
+// PERBAIKAN: Ganti ChurchListPage dengan SchedulePage
 import 'package:mychatolic_app/pages/schedule_page.dart'; 
 import 'package:mychatolic_app/pages/consilium/consilium_page.dart';
 import 'package:mychatolic_app/pages/profile_page.dart';
@@ -36,7 +37,7 @@ class _HomePageState extends State<HomePage> {
     if (user != null) {
       final profile = await _supabase.from('profiles').select().eq('id', user.id).maybeSingle();
       if (profile == null) {
-        // Handle missing profile
+        // Handle missing profile logic if needed
       }
     }
   }
@@ -62,14 +63,13 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Pastikan urutan children sesuai dengan BottomNavigationBar items
     final List<Widget> children = [
       HomeScreen(key: _homeScreenKey),
-      const SchedulePage(),     // Index 1: Jadwal
-      const RadarPage(),        // Index 2: Radar
-      const ConsiliumPage(),    // Index 3: Consilium
-      const SocialInboxPage(),  // Index 4: Chat
-      ProfilePage(key: _profilePageKey), // Index 5: Profil
+      const SchedulePage(),     // <--- PERBAIKAN: Halaman Jadwal Baru
+      const RadarPage(),        
+      const ConsiliumPage(),    
+      const SocialInboxPage(),  
+      ProfilePage(key: _profilePageKey),       
     ];
 
     return Scaffold(

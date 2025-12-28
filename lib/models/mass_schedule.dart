@@ -2,7 +2,7 @@ class MassSchedule {
   final String id;
   final String churchId;
   final String churchName;
-  final String? churchParish;
+  final String? churchParish; // Bisa berisi nama paroki atau alamat
   final String timeStart;
   final String? language;
   final int dayOfWeek;
@@ -20,13 +20,13 @@ class MassSchedule {
   factory MassSchedule.fromJson(Map<String, dynamic> json) {
     // Handling relasi nested 'churches'
     String cName = 'Gereja';
-    String? cParish;
+    String? cInfo;
     
     if (json['churches'] != null) {
       final cData = json['churches'];
       cName = cData['name'] ?? cName;
-      // Mencoba mengambil 'parish' atau 'parish_name' untuk kompatibilitas
-      cParish = cData['parish'] ?? cData['parish_name']; 
+      // Coba ambil 'parish', jika null ambil 'parish_name', jika null ambil 'address'
+      cInfo = cData['parish'] ?? cData['parish_name'] ?? cData['address']; 
     }
 
     // Parsing Time (HH:MM)
@@ -39,7 +39,7 @@ class MassSchedule {
       id: json['id']?.toString() ?? '',
       churchId: json['church_id']?.toString() ?? '',
       churchName: cName,
-      churchParish: cParish,
+      churchParish: cInfo,
       timeStart: time,
       language: json['language'],
       dayOfWeek: json['day_of_week'] is int 

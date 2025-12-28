@@ -5,12 +5,14 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/services/supabase_service.dart';
 import 'package:mychatolic_app/services/radar_service.dart';
+// Import halaman selection
+import 'package:mychatolic_app/pages/radars/friend_selection_page.dart';
 
 class CreateInvitePage extends StatefulWidget {
   final String? targetUserId;
-  final String? targetUserName;
+  final String? targetUserName; // Opsional, untuk display awal jika ada
   
-  // Parameter Autofill
+  // Parameter Autofill dari Jadwal
   final String? initialChurchName;
   final String? initialChurchId;
   final DateTime? initialDate;
@@ -35,22 +37,26 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
   final RadarService _radarService = RadarService();
   final _supabase = Supabase.instance.client;
 
-  // Controllers
+  // Form Controllers
   final TextEditingController _countryController = TextEditingController(text: "Indonesia");
   final TextEditingController _dioceseController = TextEditingController();
   final TextEditingController _churchController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
 
+  // Selection State
   String? _selectedCountryId;
   String? _selectedDioceseId; 
   String? _selectedChurchId; 
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
+  
+  // Friend State
+  Map<String, dynamic>? _selectedTargetUser;
+  bool _isFetchingUser = false;
 
   bool _isLoading = false;
 
   static const Color primaryBrand = Color(0xFF0088CC);
-  static const Color bgMain = Color(0xFFFFFFFF);
   static const Color textPrimary = Color(0xFF000000);
   static const Color textSecondary = Color(0xFF555555);
 
@@ -59,27 +65,40 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
     super.initState();
     _performReverseLookup();
     _applyInitialData();
+    _initTargetUser();
+  }
+
+  void _initTargetUser() async {
+    // Skenario 1: Masuk dari Profil User Lain
+    if (widget.targetUserId != null) {
+      setState(() => _isFetchingUser = true);
+      try {
+        final data = await _supabase.from('profiles')
+            .select('id, full_name, avatar_url, username')
+            .eq('id', widget.targetUserId!)
+            .single();
+        if (mounted) {
+          setState(() {
+            _selectedTargetUser = data;
+            _isFetchingUser = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) setState(() => _isFetchingUser = false);
+      }
+    } 
+    // Skenario 2: Masuk dari Jadwal (Target User masih null)
   }
 
   void _applyInitialData() {
-    if (widget.initialChurchName != null) {
-      _churchController.text = widget.initialChurchName!;
-    }
-    if (widget.initialChurchId != null) {
-      _selectedChurchId = widget.initialChurchId;
-    }
-    if (widget.initialDate != null) {
-      _selectedDate = widget.initialDate;
-    }
+    if (widget.initialChurchName != null) _churchController.text = widget.initialChurchName!;
+    if (widget.initialChurchId != null) _selectedChurchId = widget.initialChurchId;
+    if (widget.initialDate != null) _selectedDate = widget.initialDate;
     if (widget.initialTime != null) {
       try {
         final parts = widget.initialTime!.split(':');
-        if (parts.length >= 2) {
-          _selectedTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
-        }
-      } catch (e) {
-        debugPrint("Time parsing error: $e");
-      }
+        if (parts.length >= 2) _selectedTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+      } catch (e) { debugPrint("Time err: $e"); }
     }
   }
 
@@ -112,11 +131,31 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
+  void _openFriendSelector() async {
+    final result = await Navigator.push(
+      context, 
+      MaterialPageRoute(builder: (_) => const FriendSelectionPage())
+    );
+
+    if (result != null && result is Map<String, dynamic>) {
+      setState(() {
+        _selectedTargetUser = result;
+      });
+    }
+  }
+
   Future<void> _submitInvite() async {
+    // Validasi Teman
+    if (_selectedTargetUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih teman yang ingin diajak!")));
+      return;
+    }
+    // Validasi Gereja
     if (_selectedChurchId == null && _churchController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih Gereja terlebih dahulu!")));
       return;
     }
+    // Validasi Waktu
     if (_selectedDate == null || _selectedTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tentukan Waktu Misa!")));
       return;
@@ -130,20 +169,17 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
         _selectedTime!.hour, _selectedTime!.minute,
       );
 
-      if (widget.targetUserId != null) {
-        await _radarService.createPersonalRadar(
-          targetUserId: widget.targetUserId!,
-          churchId: _selectedChurchId ?? '',
-          churchName: _churchController.text,
-          scheduleTime: finalSchedule,
-          message: _messageController.text,
-        );
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Undangan ke ${widget.targetUserName} terkirim!"), backgroundColor: Colors.green));
-        }
-      } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih teman terlebih dahulu (Fitur Public Radar coming soon)")));
+      await _radarService.createPersonalRadar(
+        targetUserId: _selectedTargetUser!['id'], // Gunakan ID dari user yang dipilih
+        churchId: _selectedChurchId ?? '',
+        churchName: _churchController.text,
+        scheduleTime: finalSchedule,
+        message: _messageController.text,
+      );
+      
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Undangan ke ${_selectedTargetUser!['full_name']} terkirim!"), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal mengirim: $e")));
@@ -154,7 +190,7 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
 
   void _showSearchableSelection({required String title, required String tableName, required Function(Map<String, dynamic>) onSelect, String? filterColumn, dynamic filterValue}) {
     showModalBottomSheet(
-      context: context, backgroundColor: bgMain, isScrollControlled: true,
+      context: context, backgroundColor: Colors.white, isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => _SearchableListModal(title: title, tableName: tableName, onSelect: onSelect, supabase: _supabase, filterColumn: filterColumn, filterValue: filterValue),
     );
@@ -162,8 +198,6 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
 
   @override
   Widget build(BuildContext context) {
-    final String pageTitle = widget.targetUserName != null ? "Ajak ${widget.targetUserName}" : "Buat Ajakan Misa";
-
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       bottomNavigationBar: Container(
@@ -183,21 +217,84 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
         bottom: false, 
         child: Column(
           children: [
+            // HEADER
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
               color: const Color(0xFFF9FAFB),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                  GestureDetector(onTap: () => Navigator.pop(context), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)), child: const Icon(Icons.close, color: textPrimary, size: 20))),
                  const SizedBox(height: 24),
-                 Text(pageTitle, style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w800, color: textPrimary)),
-                 const SizedBox(height: 6),
-                 Text("Lengkapi detail jadwal misa di bawah ini.", style: GoogleFonts.outfit(fontSize: 15, color: textSecondary)),
+                 Text("Buat Ajakan Misa", style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w800, color: textPrimary)),
               ]),
             ),
+            
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    
+                    // SECTION: TEMAN (KEPADA SIAPA?)
+                    _buildSectionTitle("KEPADA"),
+                    const SizedBox(height: 12),
+                    if (_isFetchingUser)
+                      const Center(child: LinearProgressIndicator())
+                    else if (_selectedTargetUser != null)
+                      // TAMPILAN JIKA TEMAN SUDAH DIPILIH
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor: Colors.grey[200],
+                              backgroundImage: _selectedTargetUser!['avatar_url'] != null ? NetworkImage(_selectedTargetUser!['avatar_url']) : null,
+                              child: _selectedTargetUser!['avatar_url'] == null ? const Icon(Icons.person, color: Colors.grey) : null,
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(_selectedTargetUser!['full_name'] ?? "User", style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  Text("@${_selectedTargetUser!['username']}", style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            // Jika masuk lewat Profil, tombol ganti disembunyikan. Jika lewat Jadwal, boleh ganti.
+                            if (widget.targetUserId == null)
+                              IconButton(
+                                icon: const Icon(Icons.change_circle_outlined, color: primaryBrand),
+                                onPressed: _openFriendSelector,
+                              )
+                          ],
+                        ),
+                      )
+                    else
+                      // TOMBOL PILIH TEMAN (Jika belum ada)
+                      GestureDetector(
+                        onTap: _openFriendSelector,
+                        child: Container(
+                          height: 70,
+                          decoration: BoxDecoration(
+                            color: primaryBrand.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: primaryBrand.withOpacity(0.3), style: BorderStyle.solid),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.person_add_alt_1_rounded, color: primaryBrand),
+                              const SizedBox(width: 10),
+                              Text("Pilih Teman untuk Diajak", style: GoogleFonts.outfit(color: primaryBrand, fontWeight: FontWeight.bold, fontSize: 16)),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(height: 32),
+
+                    // SECTION: LOKASI
                     _buildSectionTitle("LOKASI"), const SizedBox(height: 12),
                     _buildActionCard(
                       label: "Negara", value: _countryController.text, icon: Icons.public,
@@ -227,12 +324,14 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
                         });
                       }
                     ),
+                    
                     const SizedBox(height: 32), _buildSectionTitle("WAKTU"), const SizedBox(height: 12),
                     Row(children: [
                         Expanded(child: _buildActionCard(label: "Tanggal", value: _selectedDate == null ? "Tanggal" : DateFormat("dd MMM yyyy").format(_selectedDate!), icon: Icons.calendar_today, isPlaceholder: _selectedDate == null, onTap: _pickDate)),
                         const SizedBox(width: 12),
                         Expanded(child: _buildActionCard(label: "Jam", value: _selectedTime == null ? "Jam" : _selectedTime!.format(context), icon: Icons.access_time, isPlaceholder: _selectedTime == null, onTap: _pickTime)),
                     ]),
+                    
                     const SizedBox(height: 32), _buildSectionTitle("PESAN"), const SizedBox(height: 12),
                     Container(
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
@@ -272,6 +371,7 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
   }
 }
 
+// --- SEARCHABLE MODAL (Internal Component) ---
 class _SearchableListModal extends StatefulWidget {
   final String title, tableName;
   final Function(Map<String, dynamic>) onSelect;

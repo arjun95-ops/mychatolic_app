@@ -5,18 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:mychatolic_app/models/mass_schedule.dart';
 import 'package:mychatolic_app/services/schedule_service.dart';
 import 'package:mychatolic_app/widgets/my_catholic_app_bar.dart';
-// NOTE: Make sure these pages actually exist. If create_invite_page.dart does not exist yet, 
-// this import will fail. Based on typical workflow, I will assume it might not exist and 
-// will create a dummy or comment it out if compilation fails, but user provided this code explicitly.
-// However, the user request says "Gunakan kode lengkap berikut".
-// I will blindly use the import but if CreateInvitePage is missing, it will error.
-// The user previously mentioned `lib/pages/radars/create_invite_page.dart` but usually pages are in `lib/pages/`.
-// I'll check previous file list quickly... NO, I can't check efficiently. 
-// I will use `mychatolic_app/pages/create_invite_page.dart` if the user meant that.
-// But the user code says `package:mychatolic_app/pages/radars/create_invite_page.dart`.
-// I will follow the user provided code exactly.
-
-import 'package:mychatolic_app/pages/radars/create_invite_page.dart';
+// PERBAIKAN IMPORT: Sesuaikan path ini dengan lokasi file Anda yang sebenarnya
+import 'package:mychatolic_app/pages/radars/create_invite_page.dart'; 
 import 'package:mychatolic_app/pages/radar_page.dart';
 
 class SchedulePage extends StatefulWidget {
@@ -30,7 +20,6 @@ class _SchedulePageState extends State<SchedulePage> {
   final ScheduleService _scheduleService = ScheduleService();
   DateTime _selectedDate = DateTime.now();
   
-  // Gunakan Key untuk memaksa refresh FutureBuilder saat tanggal berubah
   Future<List<MassSchedule>>? _schedulesFuture;
 
   @override
@@ -70,7 +59,6 @@ class _SchedulePageState extends State<SchedulePage> {
       ),
       body: Column(
         children: [
-          // 1. TIMELINE
           Container(
             color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 16),
@@ -99,8 +87,6 @@ class _SchedulePageState extends State<SchedulePage> {
               ),
             ),
           ),
-
-          // 2. LIST
           Expanded(
             child: FutureBuilder<List<MassSchedule>>(
               future: _schedulesFuture,
@@ -111,7 +97,10 @@ class _SchedulePageState extends State<SchedulePage> {
                 
                 if (snapshot.hasError) {
                   return Center(
-                    child: Text("Error: ${snapshot.error}", style: GoogleFonts.outfit(color: Colors.red)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Text("Gagal memuat data.\nPastikan internet lancar.", textAlign: TextAlign.center, style: GoogleFonts.outfit(color: Colors.red)),
+                    ),
                   );
                 }
 
@@ -159,7 +148,6 @@ class _SchedulePageState extends State<SchedulePage> {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          // Jam
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -169,8 +157,7 @@ class _SchedulePageState extends State<SchedulePage> {
             child: Column(
               children: [
                 Text(
-                  // Handle potential substrings if HH:mm:ss comes from DB
-                  item.timeStart.length >= 5 ? item.timeStart.substring(0,5) : item.timeStart, 
+                  item.timeStart, 
                   style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue.shade800)
                 ),
                 Text("WIB", style: GoogleFonts.outfit(fontSize: 10, color: Colors.blue.shade800)),
@@ -178,7 +165,6 @@ class _SchedulePageState extends State<SchedulePage> {
             ),
           ),
           const SizedBox(width: 16),
-          // Info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -191,11 +177,9 @@ class _SchedulePageState extends State<SchedulePage> {
               ],
             ),
           ),
-          // Actions
           IconButton(
             icon: const Icon(Icons.person_add_alt_1_rounded, color: Colors.blue),
             onPressed: () {
-               // Checking if CreateInvitePage constructor matches used params
                Navigator.push(context, MaterialPageRoute(builder: (_) => CreateInvitePage(
                  initialChurchName: item.churchName,
                  initialTime: item.timeStart,
