@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/core/theme.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
-import 'package:mychatolic_app/other_user_profile_page.dart';
+import 'package:mychatolic_app/pages/other_user_profile_page.dart';
 
 class FriendSearchPage extends StatefulWidget {
   final bool isSelectionMode;
@@ -407,7 +407,7 @@ class _FriendSearchPageState extends State<FriendSearchPage> {
                                 // Let's open Profile for Tap, and "Add" button for Request.
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => OtherUserProfilePage(userData: user)),
+                                  MaterialPageRoute(builder: (_) => OtherUserProfilePage(userId: user['id'])),
                                 );
                               }
                             },

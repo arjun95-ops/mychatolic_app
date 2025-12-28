@@ -130,7 +130,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     final List<UserPost> texts = [];
 
     for (var p in allPosts) {
-      // Logic: Jika type='photo' ATAU punya URL gambar, masuk grid foto.
+      // Logic: Strictly separate by type or content presence
+      // Photos: Type is photo OR has image
       bool isPhoto = p.type == 'photo' || (p.imageUrl != null && p.imageUrl!.isNotEmpty);
       
       if (isPhoto) {
@@ -379,7 +380,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
        // User asked for "Simple" rewrite.
        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
          crossAxisCount: 3, 
-         childAspectRatio: 1, // Instagram square
+         childAspectRatio: 0.8, // Aspect Ratio 4:5
          crossAxisSpacing: 2, 
          mainAxisSpacing: 2
        ),

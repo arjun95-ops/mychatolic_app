@@ -5,8 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/core/app_colors.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
 import 'package:mychatolic_app/pages/social_chat_detail_page.dart';
-import 'package:mychatolic_app/services/supabase_service.dart';
 import 'package:mychatolic_app/pages/other_user_profile_page.dart';
+import 'package:mychatolic_app/services/master_data_service.dart';
+import 'package:mychatolic_app/services/chat_service.dart';
 import 'package:mychatolic_app/models/country.dart';
 import 'package:mychatolic_app/models/diocese.dart';
 import 'package:mychatolic_app/models/church.dart';
@@ -20,17 +21,18 @@ class SearchUserPage extends StatefulWidget {
 
 class _SearchUserPageState extends State<SearchUserPage> {
   final _supabase = Supabase.instance.client;
-  final SupabaseService _supabaseService = SupabaseService();
+  final MasterDataService _masterService = MasterDataService();
+  final ChatService _chatService = ChatService();
   final TextEditingController _searchController = TextEditingController();
   
   // Data
   List<Map<String, dynamic>> _searchResults = [];
   bool _isLoading = false;
 
-  // Filters (Raw Maps to handle UUIDs correctly)
-  List<Map<String, dynamic>> _countries = [];
-  List<Map<String, dynamic>> _dioceses = [];
-  List<Map<String, dynamic>> _churches = [];
+  // Filters (Using Models)
+  List<Country> _countries = [];
+  List<Diocese> _dioceses = [];
+  List<Church> _churches = [];
 
   String? _selectedCountryId;
   String? _selectedDioceseId;
@@ -39,53 +41,48 @@ class _SearchUserPageState extends State<SearchUserPage> {
   @override
   void initState() {
     super.initState();
-    _fetchFilterData('Negara'); // Fetch initial country data
+    _fetchCountries(); 
     _searchUsers(""); 
   }
 
-  /// Helper to fetch master data based on type
-  Future<void> _fetchFilterData(String type) async {
+  /// Helper to fetch master data
+  Future<void> _fetchCountries() async {
     try {
-      if (type == 'Negara') {
-         // Direct fetch to avoid Model int casting issues
-         final response = await _supabase.from('countries').select().order('name');
-         final data = List<Map<String, dynamic>>.from(response);
-         print("Jumlah negara yang ditarik: ${data.length}");
-         
-         if (mounted) setState(() => _countries = data);
-      } 
-      else if (type == 'Keuskupan' && _selectedCountryId != null) {
-         final response = await _supabase.from('dioceses')
-             .select()
-             .eq('country_id', _selectedCountryId!)
-             .order('name');
-         final data = List<Map<String, dynamic>>.from(response);
-         if (mounted) setState(() => _dioceses = data);
-      }
-      else if (type == 'Paroki' && _selectedDioceseId != null) {
-         // Note: using 'churches' table
-         final response = await _supabase.from('churches')
-             .select()
-             .eq('diocese_id', _selectedDioceseId!)
-             .order('name');
-         final data = List<Map<String, dynamic>>.from(response);
-         if (mounted) setState(() => _churches = data);
-      }
+       final data = await _masterService.fetchCountries();
+       if (mounted) setState(() => _countries = data);
     } catch (e) {
-      debugPrint("Error fetching $type: $e");
+      debugPrint("Error fetching countries: $e");
+    }
+  }
+
+  Future<void> _fetchDioceses(String countryId) async {
+    try {
+       final data = await _masterService.fetchDioceses(countryId);
+       if (mounted) setState(() => _dioceses = data);
+    } catch (e) {
+      debugPrint("Error fetching dioceses: $e");
+    }
+  }
+
+  Future<void> _fetchChurches(String dioceseId) async {
+    try {
+       final data = await _masterService.fetchChurches(dioceseId);
+       if (mounted) setState(() => _churches = data);
+    } catch (e) {
+      debugPrint("Error fetching churches: $e");
     }
   }
 
   void _onCountryChanged(String? countryId) {
     setState(() {
       _selectedCountryId = countryId;
-      _selectedDioceseId = null;
+      _selectedDioceseId = null; 
       _selectedChurchId = null;
       _dioceses = [];
       _churches = [];
     });
     _searchUsers(_searchController.text);
-    if (countryId != null) _fetchFilterData('Keuskupan');
+    if (countryId != null) _fetchDioceses(countryId);
   }
 
   void _onDioceseChanged(String? dioceseId) {
@@ -95,7 +92,7 @@ class _SearchUserPageState extends State<SearchUserPage> {
       _churches = [];
     });
     _searchUsers(_searchController.text);
-    if (dioceseId != null) _fetchFilterData('Paroki');
+    if (dioceseId != null) _fetchChurches(dioceseId);
   }
 
   void _onChurchChanged(String? churchId) {
@@ -130,7 +127,6 @@ class _SearchUserPageState extends State<SearchUserPage> {
         dbQuery = dbQuery.eq('diocese_id', _selectedDioceseId!);
       }
       if (_selectedChurchId != null) {
-        // Assuming profile has church_id column which is UUID/String
         dbQuery = dbQuery.eq('church_id', _selectedChurchId!);
       }
 
@@ -157,13 +153,12 @@ class _SearchUserPageState extends State<SearchUserPage> {
     final targetId = userProfile['id'];
     
     try {
-      // Use the new service method we created!
-      final chatId = await _supabaseService.startChat(targetId);
+      final chatId = await _chatService.getOrCreatePrivateChat(targetId);
 
       if (!mounted) return;
 
       // Navigate to chat detail
-      Navigator.pushReplacement(
+      Navigator.push( // Push instead of PushReplacement to allow back nav
         context, 
         MaterialPageRoute(
           builder: (_) => SocialChatDetailPage(
@@ -182,7 +177,7 @@ class _SearchUserPageState extends State<SearchUserPage> {
   String _getCountryName() {
     if (_selectedCountryId == null) return "Negara";
     try {
-      return _countries.firstWhere((c) => c['id'].toString() == _selectedCountryId)['name'];
+      return _countries.firstWhere((c) => c.id == _selectedCountryId).name;
     } catch (_) {
       return "Negara";
     }
@@ -191,7 +186,7 @@ class _SearchUserPageState extends State<SearchUserPage> {
   String _getDioceseName() {
     if (_selectedDioceseId == null) return "Keuskupan";
     try {
-      return _dioceses.firstWhere((d) => d['id'].toString() == _selectedDioceseId)['name'];
+      return _dioceses.firstWhere((d) => d.id == _selectedDioceseId).name;
     } catch (_) {
       return "Keuskupan";
     }
@@ -200,22 +195,23 @@ class _SearchUserPageState extends State<SearchUserPage> {
   String _getChurchName() {
     if (_selectedChurchId == null) return "Paroki";
     try {
-      return _churches.firstWhere((c) => c['id'].toString() == _selectedChurchId)['name'];
+      return _churches.firstWhere((c) => c.id == _selectedChurchId).name;
     } catch (_) {
       return "Paroki";
     }
   }
 
   // --- Bottom Sheet Filter (Premium) ---
-  void _showFilterSheet({
+  void _showFilterSheet<T>({
     required String title,
-    required List<Map<String, dynamic>> items,
+    required List<T> items,
+    required String Function(T) getName,
+    required String Function(T) getId,
     required Function(String?) onSelect,
-    bool isLoading = false,
   }) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Allow fuller height control
+      isScrollControlled: true, 
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -241,12 +237,7 @@ class _SearchUserPageState extends State<SearchUserPage> {
               
               const Divider(height: 1, color: AppColors.surface),
 
-              if (isLoading)
-                const Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Center(child: CircularProgressIndicator(color: AppColors.primaryBrand)),
-                )
-              else if (items.isEmpty)
+              if (items.isEmpty)
                  Padding(
                   padding: const EdgeInsets.all(32),
                   child: Center(
@@ -273,7 +264,7 @@ class _SearchUserPageState extends State<SearchUserPage> {
                             decoration: BoxDecoration(color: AppColors.primaryBrand.withOpacity(0.1), shape: BoxShape.circle),
                             child: const Icon(Icons.public, color: AppColors.primaryBrand, size: 20),
                           ),
-                          title: Text("Semua (All)", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: AppColors.primaryBrand, fontSize: 16)),
+                          title: Text("Semua", style: GoogleFonts.outfit(fontWeight: FontWeight.w600, color: AppColors.primaryBrand, fontSize: 16)),
                           trailing: const Icon(Icons.check_circle_outline, color: AppColors.primaryBrand, size: 20),
                           onTap: () {
                             onSelect(null);
@@ -283,17 +274,12 @@ class _SearchUserPageState extends State<SearchUserPage> {
                       }
                       
                       final item = items[index - 1];
-                      // Determine if selected (optional, for UI highlight)
-                      // Ideally we check if item.id == currentId, but for simplicity generic T checking is harder without passing current ID.
-                      // We'll keep it simple and clean.
-                      
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
                         leading: const Icon(Icons.location_on_outlined, color: Colors.grey, size: 22),
-                        title: Text(item['name'] ?? 'Unknown', style: GoogleFonts.outfit(fontSize: 16, color: AppColors.textPrimary)),
+                        title: Text(getName(item), style: GoogleFonts.outfit(fontSize: 16, color: AppColors.textPrimary)),
                         onTap: () {
-                          // Use toString to safe handle UUID vs int if mixed
-                          onSelect(item['id'].toString());
+                          onSelect(getId(item));
                           Navigator.pop(context);
                         },
                       );
@@ -336,7 +322,7 @@ class _SearchUserPageState extends State<SearchUserPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 12), // Consistent top spacing
+                const SizedBox(height: 12),
                 Text(
                   "Filter berdasarkan lokasi",
                   style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey[600]),
@@ -351,9 +337,11 @@ class _SearchUserPageState extends State<SearchUserPage> {
                         label: _selectedCountryId != null ? _getCountryName() : "Negara",
                         isActive: _selectedCountryId != null,
                         onTap: () {
-                          _showFilterSheet(
+                          _showFilterSheet<Country>(
                             title: "Pilih Negara",
                             items: _countries,
+                            getName: (c) => c.name,
+                            getId: (c) => c.id,
                             onSelect: (id) => _onCountryChanged(id),
                           );
                         },
@@ -366,9 +354,11 @@ class _SearchUserPageState extends State<SearchUserPage> {
                           label: _selectedDioceseId != null ? _getDioceseName() : "Keuskupan",
                           isActive: _selectedDioceseId != null,
                           onTap: () {
-                            _showFilterSheet(
+                            _showFilterSheet<Diocese>(
                               title: "Pilih Keuskupan",
                               items: _dioceses,
+                              getName: (d) => d.name,
+                              getId: (d) => d.id,
                               onSelect: (id) => _onDioceseChanged(id),
                             );
                           },
@@ -382,9 +372,11 @@ class _SearchUserPageState extends State<SearchUserPage> {
                           label: _selectedChurchId != null ? _getChurchName() : "Gereja",
                           isActive: _selectedChurchId != null,
                           onTap: () {
-                            _showFilterSheet(
+                            _showFilterSheet<Church>(
                               title: "Pilih Paroki",
                               items: _churches,
+                              getName: (c) => c.name,
+                              getId: (c) => c.id,
                               onSelect: (id) => _onChurchChanged(id),
                             );
                           },
@@ -392,7 +384,7 @@ class _SearchUserPageState extends State<SearchUserPage> {
                         const SizedBox(width: 10),
                       ],
                       
-                      // Reset Button (Only if filter actions exist)
+                      // Reset Button
                       if (hasFilter)
                         Padding(
                           padding: const EdgeInsets.only(left: 4.0),
@@ -427,6 +419,9 @@ class _SearchUserPageState extends State<SearchUserPage> {
                   separatorBuilder: (_,__) => const Divider(height: 1, color: AppColors.surface),
                   itemBuilder: (context, index) {
                     final user = _searchResults[index];
+                    final String role = (user['role'] ?? 'umat').toString().toLowerCase();
+                    final bool showRoleBadge = role != 'umat';
+
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                       // Navigation to Profile
@@ -443,14 +438,35 @@ class _SearchUserPageState extends State<SearchUserPage> {
                         fallbackIcon: Icons.person,
                       ),
                       
-                      // Name
-                      title: Text(
-                        user['full_name'] ?? "User",
-                        style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: AppColors.textPrimary)
+                      // Name & Role Badge
+                      title: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              user['full_name'] ?? "User",
+                              style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (showRoleBadge) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF9F1C),
+                                borderRadius: BorderRadius.circular(6)
+                              ),
+                              child: Text(
+                                role.toUpperCase(),
+                                style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black),
+                              ),
+                            )
+                          ]
+                        ],
                       ),
                       
                       subtitle: Text(
-                         user['role'] != null ? "${user['role'].toString().toUpperCase()}" : "Umat",
+                         user['parish'] ?? "Paroki",
                          style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13)
                       ),
                       

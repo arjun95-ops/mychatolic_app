@@ -4,7 +4,7 @@ import 'package:mychatolic_app/core/theme.dart';
 import 'dart:ui'; // For BackdropFilter
 
 class ChatDetailPage extends StatefulWidget {
-  final int chatId;
+  final String chatId;
   final String name;
 
   const ChatDetailPage({super.key, required this.chatId, required this.name});
