@@ -36,7 +36,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   final ProfileService _profileService = ProfileService();
   final StoryService _storyService = StoryService();
   final ChatService _chatService = ChatService();
-  // ignore: unused_field
   final SupabaseService _supabaseService = SupabaseService(); 
   final SocialService _socialService = SocialService();
   final _supabase = Supabase.instance.client;
@@ -176,8 +175,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         setState(() {
           _separatePosts(posts);
           _isFirstLoadRunning = false;
-          // Update stats post count (optional, but good for sync)
-          // _stats['posts'] = _photoPosts.length + _textPosts.length; // Or keep server count
           
           if (posts.length < _limit) {
             _hasNextPage = false;
@@ -324,6 +321,22 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     }
   }
 
+  // --- NEW: Handle Invite ---
+  void _navigateToInvite() {
+    if (_profile == null) return;
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateInvitePage(
+          targetUserId: _profile!.id,
+          targetUserName: _profile!.fullName,
+          // initialChurch... null karena user yang pilih
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const primaryBlue = Color(0xFF0088CC);
@@ -346,7 +359,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: NestedScrollView(
-        controller: _scrollController, // Controller attached here for infinite scroll
+        controller: _scrollController, 
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
             SliverAppBar(
@@ -397,6 +410,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                 onFollowToggle: _handleFollowToggle,
                 onChatTap: _navigateToChat,
                 onEditTap: _handleEditProfile,
+                onInviteTap: _navigateToInvite, // NEW Callback
                 hasStories: _userStories.isNotEmpty,
                 onAvatarTap: _handleAvatarTap,
               ),
@@ -487,7 +501,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
        return _buildEmptyState("Belum ada postingan teks");
      }
 
-    // Using CustomScrollView to play nice with NestedScrollView + Load More
     return CustomScrollView(
       key: const PageStorageKey<String>('list'),
       slivers: [
@@ -654,6 +667,7 @@ class ProfileHeader extends StatelessWidget {
   final VoidCallback onFollowToggle;
   final VoidCallback onChatTap;
   final VoidCallback? onEditTap;
+  final VoidCallback? onInviteTap; // NEW
   final bool hasStories;
   final VoidCallback? onAvatarTap;
 
@@ -666,6 +680,7 @@ class ProfileHeader extends StatelessWidget {
     required this.onFollowToggle,
     required this.onChatTap,
     this.onEditTap,
+    this.onInviteTap,
     this.hasStories = false,
     this.onAvatarTap,
   });
@@ -808,7 +823,7 @@ class ProfileHeader extends StatelessWidget {
                   )
                 else ...[
                   Expanded(
-                    flex: 3,
+                    flex: 2,
                     child: ElevatedButton(
                       onPressed: onFollowToggle,
                       style: ElevatedButton.styleFrom(
@@ -838,33 +853,22 @@ class ProfileHeader extends StatelessWidget {
                     ),
                   ),
                   
-                  if (_shouldShowMassInvite(profile.role)) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                       flex: 2,
-                       child: OutlinedButton.icon(
-                         onPressed: () {
-                           showModalBottomSheet(
-                             context: context,
-                             isScrollControlled: true,
-                             shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-                             builder: (context) => CreateInvitePage(
-                               targetUserId: profile.id,
-                               targetUserName: profile.fullName ?? "Teman",
-                             ),
-                           );
-                         },
-                         style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.orange),
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            backgroundColor: Colors.orange.withOpacity(0.05),
-                         ),
-                         icon: const Icon(Icons.church, size: 16, color: Colors.orange),
-                         label: Text("Misa", style: GoogleFonts.outfit(color: Colors.orange, fontSize: 12)),
+                  // TOMBOL BARU: AJAK MISA
+                  const SizedBox(width: 8),
+                  Expanded(
+                     flex: 2,
+                     child: OutlinedButton.icon(
+                       onPressed: onInviteTap,
+                       style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.orange),
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          backgroundColor: Colors.orange.withOpacity(0.05),
                        ),
+                       icon: const Icon(Icons.church_outlined, size: 16, color: Colors.orange),
+                       label: Text("Ajak Misa", style: GoogleFonts.outfit(color: Colors.orange, fontSize: 12)),
                      ),
-                  ]
+                   ),
                 ]
               ],
             ),
@@ -876,7 +880,6 @@ class ProfileHeader extends StatelessWidget {
   }
 
   Widget _buildVerificationBadge() {
-    // Sederhana, logikanya sama dengan sebelumnya
     final status = profile.verificationStatus?.toLowerCase();
     if (status == 'approved') {
        return const Icon(Icons.verified, color: Colors.blue, size: 16);
@@ -891,12 +894,6 @@ class ProfileHeader extends StatelessWidget {
         Text(label, style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey)),
       ],
     );
-  }
-
-  bool _shouldShowMassInvite(String? role) {
-    if (role == null) return true;
-    final r = role.toLowerCase();
-    return r == 'umat' || r == 'katekumen'; 
   }
 
   Widget _buildAvatar() {

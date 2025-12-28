@@ -5,14 +5,13 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/services/supabase_service.dart';
 import 'package:mychatolic_app/services/radar_service.dart';
-// Import halaman selection
+import 'package:mychatolic_app/services/schedule_service.dart'; 
+import 'package:mychatolic_app/models/mass_schedule.dart'; 
 import 'package:mychatolic_app/pages/radars/friend_selection_page.dart';
 
 class CreateInvitePage extends StatefulWidget {
   final String? targetUserId;
-  final String? targetUserName; // Opsional, untuk display awal jika ada
-  
-  // Parameter Autofill dari Jadwal
+  final String? targetUserName;
   final String? initialChurchName;
   final String? initialChurchId;
   final DateTime? initialDate;
@@ -33,27 +32,27 @@ class CreateInvitePage extends StatefulWidget {
 }
 
 class _CreateInvitePageState extends State<CreateInvitePage> {
-  final SupabaseService _supabaseService = SupabaseService();
   final RadarService _radarService = RadarService();
+  final ScheduleService _scheduleService = ScheduleService(); 
   final _supabase = Supabase.instance.client;
 
-  // Form Controllers
   final TextEditingController _countryController = TextEditingController(text: "Indonesia");
   final TextEditingController _dioceseController = TextEditingController();
   final TextEditingController _churchController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
 
-  // Selection State
   String? _selectedCountryId;
   String? _selectedDioceseId; 
   String? _selectedChurchId; 
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   
-  // Friend State
+  List<MassSchedule> _churchSchedules = [];
+  bool _isLoadingSchedules = false;
+  MassSchedule? _selectedScheduleItem; 
+
   Map<String, dynamic>? _selectedTargetUser;
   bool _isFetchingUser = false;
-
   bool _isLoading = false;
 
   static const Color primaryBrand = Color(0xFF0088CC);
@@ -69,37 +68,47 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
   }
 
   void _initTargetUser() async {
-    // Skenario 1: Masuk dari Profil User Lain
     if (widget.targetUserId != null) {
       setState(() => _isFetchingUser = true);
       try {
-        final data = await _supabase.from('profiles')
-            .select('id, full_name, avatar_url, username')
-            .eq('id', widget.targetUserId!)
-            .single();
-        if (mounted) {
-          setState(() {
-            _selectedTargetUser = data;
-            _isFetchingUser = false;
-          });
-        }
-      } catch (e) {
-        if (mounted) setState(() => _isFetchingUser = false);
-      }
+        final data = await _supabase.from('profiles').select('id, full_name, avatar_url, username').eq('id', widget.targetUserId!).single();
+        if (mounted) setState(() { _selectedTargetUser = data; _isFetchingUser = false; });
+      } catch (e) { if (mounted) setState(() => _isFetchingUser = false); }
     } 
-    // Skenario 2: Masuk dari Jadwal (Target User masih null)
   }
 
   void _applyInitialData() {
-    if (widget.initialChurchName != null) _churchController.text = widget.initialChurchName!;
-    if (widget.initialChurchId != null) _selectedChurchId = widget.initialChurchId;
+    if (widget.initialChurchName != null) {
+      _churchController.text = widget.initialChurchName!;
+    }
+    if (widget.initialChurchId != null) {
+      _selectedChurchId = widget.initialChurchId;
+      _fetchSchedulesForChurch(_selectedChurchId!);
+    }
     if (widget.initialDate != null) _selectedDate = widget.initialDate;
     if (widget.initialTime != null) {
       try {
         final parts = widget.initialTime!.split(':');
         if (parts.length >= 2) _selectedTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
-      } catch (e) { debugPrint("Time err: $e"); }
+      } catch (e) {}
     }
+  }
+
+  Future<void> _fetchSchedulesForChurch(String churchId) async {
+    setState(() => _isLoadingSchedules = true);
+    try {
+      final schedules = await _scheduleService.fetchSchedules(churchId: churchId);
+      if (mounted) setState(() { _churchSchedules = schedules; _isLoadingSchedules = false; });
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingSchedules = false);
+    }
+  }
+
+  DateTime _calcNextDate(int targetWeekday) {
+    final now = DateTime.now();
+    int daysToAdd = (targetWeekday - now.weekday + 7) % 7;
+    if (daysToAdd == 0) return now; 
+    return now.add(Duration(days: daysToAdd));
   }
 
   Future<void> _performReverseLookup() async {
@@ -108,7 +117,7 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
           final cData = await _supabase.from('countries').select('id').ilike('name', _countryController.text).maybeSingle();
           if (cData != null && mounted) setState(() => _selectedCountryId = cData['id'].toString());
         }
-     } catch (e) { debugPrint("Lookup failed: $e"); }
+     } catch (e) {}
   }
 
   Future<void> _pickDate() async {
@@ -119,7 +128,7 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) => Theme(data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: primaryBrand)), child: child!)
     );
-    if (picked != null) setState(() => _selectedDate = picked);
+    if (picked != null) setState(() { _selectedDate = picked; _selectedScheduleItem = null; });
   }
 
   Future<void> _pickTime() async {
@@ -128,55 +137,124 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
       initialTime: _selectedTime ?? TimeOfDay.now(),
       builder: (context, child) => Theme(data: ThemeData.light().copyWith(colorScheme: const ColorScheme.light(primary: primaryBrand)), child: child!)
     );
-    if (picked != null) setState(() => _selectedTime = picked);
+    if (picked != null) setState(() { _selectedTime = picked; _selectedScheduleItem = null; });
   }
 
   void _openFriendSelector() async {
-    final result = await Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => const FriendSelectionPage())
-    );
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const FriendSelectionPage()));
+    if (result != null && result is Map<String, dynamic>) setState(() => _selectedTargetUser = result);
+  }
 
-    if (result != null && result is Map<String, dynamic>) {
-      setState(() {
-        _selectedTargetUser = result;
-      });
+  void _showSchedulePicker() {
+    if (_churchSchedules.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada data jadwal untuk gereja ini. Silakan atur manual.")));
+      return;
     }
+
+    final days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent, // Transparan agar rounded corners terlihat
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.6,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text("Pilih Jadwal Misa", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  itemCount: _churchSchedules.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final item = _churchSchedules[index];
+                    // Safety check untuk dayOfWeek
+                    String dayName = "Hari ${item.dayOfWeek}";
+                    if (item.dayOfWeek >= 1 && item.dayOfWeek <= 7) {
+                       dayName = days[item.dayOfWeek - 1];
+                    }
+
+                    return InkWell(
+                      onTap: () {
+                        final nextDate = _calcNextDate(item.dayOfWeek);
+                        final parts = item.timeStart.split(':');
+                        final time = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+                        setState(() {
+                          _selectedScheduleItem = item;
+                          _selectedDate = nextDate;
+                          _selectedTime = time;
+                        });
+                        Navigator.pop(context);
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade200),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0, 2))],
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(color: const Color(0xFFE3F2FD), borderRadius: BorderRadius.circular(8)),
+                              child: Text(item.timeStart.substring(0, 5), style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFF1565C0))),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(dayName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  Text(item.language ?? "Umum", style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.touch_app_outlined, color: Colors.grey),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              )
+            ],
+          ),
+        );
+      }
+    );
   }
 
   Future<void> _submitInvite() async {
-    // Validasi Teman
-    if (_selectedTargetUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih teman yang ingin diajak!")));
-      return;
-    }
-    // Validasi Gereja
-    if (_selectedChurchId == null && _churchController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih Gereja terlebih dahulu!")));
-      return;
-    }
-    // Validasi Waktu
-    if (_selectedDate == null || _selectedTime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tentukan Waktu Misa!")));
-      return;
-    }
+    if (_selectedTargetUser == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih teman yang ingin diajak!"))); return; }
+    if (_selectedChurchId == null && _churchController.text.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih Gereja terlebih dahulu!"))); return; }
+    if (_selectedDate == null || _selectedTime == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tentukan Waktu Misa!"))); return; }
 
     setState(() => _isLoading = true);
-
     try {
       final DateTime finalSchedule = DateTime(
         _selectedDate!.year, _selectedDate!.month, _selectedDate!.day,
         _selectedTime!.hour, _selectedTime!.minute,
       );
-
       await _radarService.createPersonalRadar(
-        targetUserId: _selectedTargetUser!['id'], // Gunakan ID dari user yang dipilih
+        targetUserId: _selectedTargetUser!['id'], 
         churchId: _selectedChurchId ?? '',
         churchName: _churchController.text,
         scheduleTime: finalSchedule,
         message: _messageController.text,
       );
-      
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Undangan ke ${_selectedTargetUser!['full_name']} terkirim!"), backgroundColor: Colors.green));
@@ -208,8 +286,7 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
           child: ElevatedButton(
             onPressed: _isLoading ? null : _submitInvite,
             style: ElevatedButton.styleFrom(backgroundColor: primaryBrand, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-            child: _isLoading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)) 
-                              : Text("KIRIM UNDANGAN", style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+            child: _isLoading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)) : Text("KIRIM UNDANGAN", style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
           ),
         ),
       ),
@@ -217,7 +294,6 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
         bottom: false, 
         child: Column(
           children: [
-            // HEADER
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
               color: const Color(0xFFF9FAFB),
@@ -227,105 +303,54 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
                  Text("Buat Ajakan Misa", style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w800, color: textPrimary)),
               ]),
             ),
-            
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    
-                    // SECTION: TEMAN (KEPADA SIAPA?)
-                    _buildSectionTitle("KEPADA"),
-                    const SizedBox(height: 12),
-                    if (_isFetchingUser)
-                      const Center(child: LinearProgressIndicator())
+                    _buildSectionTitle("KEPADA"), const SizedBox(height: 12),
+                    if (_isFetchingUser) const LinearProgressIndicator() 
                     else if (_selectedTargetUser != null)
-                      // TAMPILAN JIKA TEMAN SUDAH DIPILIH
                       Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 24,
-                              backgroundColor: Colors.grey[200],
-                              backgroundImage: _selectedTargetUser!['avatar_url'] != null ? NetworkImage(_selectedTargetUser!['avatar_url']) : null,
-                              child: _selectedTargetUser!['avatar_url'] == null ? const Icon(Icons.person, color: Colors.grey) : null,
-                            ),
+                        padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+                        child: Row(children: [
+                            CircleAvatar(radius: 24, backgroundColor: Colors.grey[200], backgroundImage: _selectedTargetUser!['avatar_url'] != null ? NetworkImage(_selectedTargetUser!['avatar_url']) : null, child: _selectedTargetUser!['avatar_url'] == null ? const Icon(Icons.person, color: Colors.grey) : null),
                             const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(_selectedTargetUser!['full_name'] ?? "User", style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
-                                  Text("@${_selectedTargetUser!['username']}", style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                            // Jika masuk lewat Profil, tombol ganti disembunyikan. Jika lewat Jadwal, boleh ganti.
-                            if (widget.targetUserId == null)
-                              IconButton(
-                                icon: const Icon(Icons.change_circle_outlined, color: primaryBrand),
-                                onPressed: _openFriendSelector,
-                              )
-                          ],
-                        ),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_selectedTargetUser!['full_name'] ?? "User", style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)), Text("@${_selectedTargetUser!['username']}", style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12))])),
+                            if (widget.targetUserId == null) IconButton(icon: const Icon(Icons.change_circle_outlined, color: primaryBrand), onPressed: _openFriendSelector)
+                        ]),
                       )
                     else
-                      // TOMBOL PILIH TEMAN (Jika belum ada)
+                      GestureDetector(onTap: _openFriendSelector, child: Container(height: 70, decoration: BoxDecoration(color: primaryBrand.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: primaryBrand.withOpacity(0.3))), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.person_add_alt_1_rounded, color: primaryBrand), const SizedBox(width: 10), Text("Pilih Teman", style: GoogleFonts.outfit(color: primaryBrand, fontWeight: FontWeight.bold, fontSize: 16))]))),
+
+                    const SizedBox(height: 32), _buildSectionTitle("LOKASI"), const SizedBox(height: 12),
+                    _buildActionCard(label: "Negara", value: _countryController.text, icon: Icons.public, onTap: () => _showSearchableSelection(title: "Pilih Negara", tableName: "countries", onSelect: (item) { setState(() { _countryController.text = item['name']; _selectedCountryId = item['id'].toString(); _dioceseController.clear(); _selectedDioceseId = null; _churchController.clear(); _selectedChurchId = null; _churchSchedules = []; }); })),
+                    const SizedBox(height: 12),
+                    _buildActionCard(label: "Keuskupan", value: _dioceseController.text.isEmpty ? "Pilih Keuskupan" : _dioceseController.text, icon: Icons.account_balance, isPlaceholder: _dioceseController.text.isEmpty, onTap: () { if (_selectedCountryId == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih Negara Dulu"))); return; } _showSearchableSelection(title: "Pilih Keuskupan", tableName: "dioceses", filterColumn: "country_id", filterValue: _selectedCountryId, onSelect: (item) { setState(() { _dioceseController.text = item['name']; _selectedDioceseId = item['id'].toString(); _churchController.clear(); _selectedChurchId = null; _churchSchedules = []; }); }); }),
+                    const SizedBox(height: 12),
+                    _buildActionCard(label: "Gereja / Paroki", value: _churchController.text.isEmpty ? "Pilih Gereja" : _churchController.text, icon: Icons.church, isPlaceholder: _churchController.text.isEmpty, onTap: () { if (_selectedDioceseId == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih Keuskupan Dulu"))); return; } _showSearchableSelection(title: "Pilih Gereja", tableName: "churches", filterColumn: "diocese_id", filterValue: _selectedDioceseId, onSelect: (item) { setState(() { _churchController.text = item['name']; _selectedChurchId = item['id'].toString(); _fetchSchedulesForChurch(_selectedChurchId!); }); }); }),
+                    
+                    const SizedBox(height: 32), _buildSectionTitle("WAKTU"), const SizedBox(height: 12),
+                    
+                    // SMART SCHEDULE BUTTON
+                    if (_selectedChurchId != null) ...[
                       GestureDetector(
-                        onTap: _openFriendSelector,
+                        onTap: _showSchedulePicker,
                         child: Container(
-                          height: 70,
-                          decoration: BoxDecoration(
-                            color: primaryBrand.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: primaryBrand.withOpacity(0.3), style: BorderStyle.solid),
-                          ),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.green.withOpacity(0.3))),
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.person_add_alt_1_rounded, color: primaryBrand),
-                              const SizedBox(width: 10),
-                              Text("Pilih Teman untuk Diajak", style: GoogleFonts.outfit(color: primaryBrand, fontWeight: FontWeight.bold, fontSize: 16)),
+                              const Icon(Icons.touch_app, color: Colors.green),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text(_selectedScheduleItem != null ? "Ubah Pilihan Jadwal" : "Lihat & Pilih Jadwal Misa", style: GoogleFonts.outfit(color: Colors.green[800], fontWeight: FontWeight.bold))),
+                              if (_isLoadingSchedules) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) else const Icon(Icons.keyboard_arrow_down, color: Colors.green)
                             ],
                           ),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                    ],
 
-                    const SizedBox(height: 32),
-
-                    // SECTION: LOKASI
-                    _buildSectionTitle("LOKASI"), const SizedBox(height: 12),
-                    _buildActionCard(
-                      label: "Negara", value: _countryController.text, icon: Icons.public,
-                      onTap: () => _showSearchableSelection(title: "Pilih Negara", tableName: "countries", onSelect: (item) {
-                        setState(() { _countryController.text = item['name']; _selectedCountryId = item['id'].toString(); _dioceseController.clear(); _selectedDioceseId = null; _churchController.clear(); _selectedChurchId = null; });
-                      })
-                    ),
-                    const SizedBox(height: 12),
-                    _buildActionCard(
-                      label: "Keuskupan", value: _dioceseController.text.isEmpty ? "Pilih Keuskupan" : _dioceseController.text, icon: Icons.account_balance,
-                      isPlaceholder: _dioceseController.text.isEmpty,
-                      onTap: () {
-                        if (_selectedCountryId == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih Negara Terlebih Dahulu"))); return; }
-                        _showSearchableSelection(title: "Pilih Keuskupan", tableName: "dioceses", filterColumn: "country_id", filterValue: _selectedCountryId, onSelect: (item) {
-                           setState(() { _dioceseController.text = item['name']; _selectedDioceseId = item['id'].toString(); _churchController.clear(); _selectedChurchId = null; });
-                        });
-                      }
-                    ),
-                    const SizedBox(height: 12),
-                    _buildActionCard(
-                      label: "Gereja / Paroki", value: _churchController.text.isEmpty ? "Pilih Gereja" : _churchController.text, icon: Icons.church,
-                      isPlaceholder: _churchController.text.isEmpty,
-                      onTap: () {
-                         if (_selectedDioceseId == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih Keuskupan Terlebih Dahulu"))); return; }
-                        _showSearchableSelection(title: "Pilih Gereja", tableName: "churches", filterColumn: "diocese_id", filterValue: _selectedDioceseId, onSelect: (item) {
-                             setState(() { _churchController.text = item['name']; _selectedChurchId = item['id'].toString(); });
-                        });
-                      }
-                    ),
-                    
-                    const SizedBox(height: 32), _buildSectionTitle("WAKTU"), const SizedBox(height: 12),
                     Row(children: [
                         Expanded(child: _buildActionCard(label: "Tanggal", value: _selectedDate == null ? "Tanggal" : DateFormat("dd MMM yyyy").format(_selectedDate!), icon: Icons.calendar_today, isPlaceholder: _selectedDate == null, onTap: _pickDate)),
                         const SizedBox(width: 12),
@@ -333,11 +358,7 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
                     ]),
                     
                     const SizedBox(height: 32), _buildSectionTitle("PESAN"), const SizedBox(height: 12),
-                    Container(
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      child: TextField(controller: _messageController, maxLines: 3, style: GoogleFonts.outfit(color: textPrimary, fontSize: 16), decoration: InputDecoration(border: InputBorder.none, hintText: "Tulis pesan singkat (opsional)...", hintStyle: GoogleFonts.outfit(color: Colors.grey.shade400))),
-                    ),
+                    Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]), child: TextField(controller: _messageController, maxLines: 3, style: GoogleFonts.outfit(color: textPrimary, fontSize: 16), decoration: InputDecoration(border: InputBorder.none, hintText: "Tulis pesan singkat (opsional)...", hintStyle: GoogleFonts.outfit(color: Colors.grey.shade400)))),
                     const SizedBox(height: 40),
                 ]),
               ),
@@ -351,73 +372,9 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
   Widget _buildSectionTitle(String title) => Padding(padding: const EdgeInsets.only(left: 4), child: Text(title, style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade500, letterSpacing: 1.2)));
 
   Widget _buildActionCard({required String label, required String value, required IconData icon, required VoidCallback onTap, bool isPlaceholder = false}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 64, padding: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
-        child: Row(children: [
-            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: primaryBrand.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: primaryBrand, size: 20)),
-            const SizedBox(width: 16),
-            Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(label, style: GoogleFonts.outfit(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(value, style: GoogleFonts.outfit(color: isPlaceholder ? Colors.grey.shade400 : textPrimary, fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-            ])),
-            Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey.shade300, size: 16),
-        ]),
-      ),
-    );
+    return GestureDetector(onTap: onTap, child: Container(height: 64, padding: const EdgeInsets.symmetric(horizontal: 20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]), child: Row(children: [Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: primaryBrand.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: primaryBrand, size: 20)), const SizedBox(width: 16), Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: GoogleFonts.outfit(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.w600)), const SizedBox(height: 2), Text(value, style: GoogleFonts.outfit(color: isPlaceholder ? Colors.grey.shade400 : textPrimary, fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)])), Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey.shade300, size: 16)])));
   }
 }
 
-// --- SEARCHABLE MODAL (Internal Component) ---
-class _SearchableListModal extends StatefulWidget {
-  final String title, tableName;
-  final Function(Map<String, dynamic>) onSelect;
-  final SupabaseClient supabase;
-  final String? filterColumn;
-  final dynamic filterValue;
-  const _SearchableListModal({required this.title, required this.tableName, required this.onSelect, required this.supabase, this.filterColumn, this.filterValue});
-  @override State<_SearchableListModal> createState() => _SearchableListModalState();
-}
-
-class _SearchableListModalState extends State<_SearchableListModal> {
-  final TextEditingController _search = TextEditingController();
-  List<Map<String, dynamic>> _res = []; bool _load = false; Timer? _deb;
-  static const Color brand = Color(0xFF0088CC);
-
-  @override void initState() { super.initState(); _runSearch(""); }
-  @override void dispose() { _search.dispose(); _deb?.cancel(); super.dispose(); }
-
-  void _runSearch(String q) {
-    if (_deb?.isActive ?? false) _deb!.cancel();
-    _deb = Timer(const Duration(milliseconds: 500), () async {
-      setState(() => _load = true);
-      try {
-        var db = widget.supabase.from(widget.tableName).select('id, name');
-        if (widget.filterColumn != null && widget.filterValue != null) db = db.eq(widget.filterColumn!, widget.filterValue);
-        if (widget.tableName == 'churches') db = db.eq('type', 'parish');
-        final d = await db.ilike('name', '%$q%').limit(20);
-        if (mounted) setState(() => _res = List<Map<String, dynamic>>.from(d));
-      } catch (e) { if (mounted) setState(() => _res = []); } 
-      finally { if (mounted) setState(() => _load = false); }
-    });
-  }
-
-  @override Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7, padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      child: Column(children: [
-          Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 24),
-          Text(widget.title, style: GoogleFonts.outfit(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          TextField(controller: _search, onChanged: _runSearch, style: GoogleFonts.outfit(color: Colors.black), decoration: InputDecoration(prefixIcon: const Icon(Icons.search, color: Colors.grey), hintText: "Cari ${widget.title}...", filled: true, fillColor: const Color(0xFFF0F2F5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-          const SizedBox(height: 16),
-          Expanded(child: _load ? const Center(child: CircularProgressIndicator(color: brand)) : _res.isEmpty ? Center(child: Text("Tidak ditemukan", style: GoogleFonts.outfit(color: Colors.grey))) : ListView.separated(itemCount: _res.length, separatorBuilder: (_,__) => Divider(color: Colors.grey.shade100, height: 1), itemBuilder: (ctx, i) => ListTile(title: Text(_res[i]['name'], style: GoogleFonts.outfit(fontWeight: FontWeight.w500)), onTap: () { widget.onSelect(_res[i]); Navigator.pop(context); }, trailing: const Icon(Icons.chevron_right, color: Colors.grey))))
-      ]),
-    );
-  }
-}
+class _SearchableListModal extends StatefulWidget { final String title, tableName; final Function(Map<String, dynamic>) onSelect; final SupabaseClient supabase; final String? filterColumn; final dynamic filterValue; const _SearchableListModal({required this.title, required this.tableName, required this.onSelect, required this.supabase, this.filterColumn, this.filterValue}); @override State<_SearchableListModal> createState() => _SearchableListModalState(); }
+class _SearchableListModalState extends State<_SearchableListModal> { final TextEditingController _search = TextEditingController(); List<Map<String, dynamic>> _res = []; bool _load = false; Timer? _deb; static const Color brand = Color(0xFF0088CC); @override void initState() { super.initState(); _runSearch(""); } @override void dispose() { _search.dispose(); _deb?.cancel(); super.dispose(); } void _runSearch(String q) { if (_deb?.isActive ?? false) _deb!.cancel(); _deb = Timer(const Duration(milliseconds: 500), () async { setState(() => _load = true); try { var db = widget.supabase.from(widget.tableName).select('id, name'); if (widget.filterColumn != null && widget.filterValue != null) db = db.eq(widget.filterColumn!, widget.filterValue); if (widget.tableName == 'churches') db = db.eq('type', 'parish'); final d = await db.ilike('name', '%$q%').limit(20); if (mounted) setState(() => _res = List<Map<String, dynamic>>.from(d)); } catch (e) { if (mounted) setState(() => _res = []); } finally { if (mounted) setState(() => _load = false); } }); } @override Widget build(BuildContext context) { return Container(height: MediaQuery.of(context).size.height * 0.7, padding: const EdgeInsets.fromLTRB(20, 16, 20, 0), decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))), child: Column(children: [Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))), const SizedBox(height: 24), Text(widget.title, style: GoogleFonts.outfit(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center), const SizedBox(height: 24), TextField(controller: _search, onChanged: _runSearch, style: GoogleFonts.outfit(color: Colors.black), decoration: InputDecoration(prefixIcon: const Icon(Icons.search, color: Colors.grey), hintText: "Cari ${widget.title}...", filled: true, fillColor: const Color(0xFFF0F2F5), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))), const SizedBox(height: 16), Expanded(child: _load ? const Center(child: CircularProgressIndicator(color: brand)) : _res.isEmpty ? Center(child: Text("Tidak ditemukan", style: GoogleFonts.outfit(color: Colors.grey))) : ListView.separated(itemCount: _res.length, separatorBuilder: (_,__) => Divider(color: Colors.grey.shade100, height: 1), itemBuilder: (ctx, i) => ListTile(title: Text(_res[i]['name'], style: GoogleFonts.outfit(fontWeight: FontWeight.w500)), onTap: () { widget.onSelect(_res[i]); Navigator.pop(context); }, trailing: const Icon(Icons.chevron_right, color: Colors.grey))))])); } }
