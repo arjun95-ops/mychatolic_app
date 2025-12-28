@@ -118,7 +118,7 @@ class _HomePageState extends State<HomePage> {
           currentIndex: _currentIndex,
           onTap: _onTabTapped,
           backgroundColor: Theme.of(context).cardColor,
-          selectedItemColor: const Color(0xFFE53935), // Red active color
+          selectedItemColor: const Color(0xFF0088CC), // Blue active color
           unselectedItemColor: Colors.grey, // Grey inactive color
           showUnselectedLabels: true,
           type: BottomNavigationBarType.fixed,
