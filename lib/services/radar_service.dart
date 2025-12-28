@@ -14,7 +14,6 @@ class RadarService {
     if (user == null) throw Exception("User not logged in");
 
     try {
-      // 1. Fetch Schedule Data First
       final scheduleData = await _supabase
           .from('mass_schedules')
           .select('church_id, time_start, day_of_week')
@@ -25,7 +24,6 @@ class RadarService {
       final timeStart = scheduleData['time_start'] as String;
       final dayOfWeek = scheduleData['day_of_week'] as int;
 
-      // 2. Calculate schedule_time
       final now = DateTime.now();
       int currentDayDb = (now.weekday == 7) ? 0 : now.weekday; 
       
@@ -43,7 +41,6 @@ class RadarService {
       final scheduleTime = DateTime(now.year, now.month, now.day + daysToAdd, hour, minute);
       final expiresAt = scheduleTime.add(const Duration(hours: 24));
 
-      // 3. Insert into radars table
       await _supabase.from('radars').insert({
         'user_id': user.id,
         'type': 'mass',
@@ -55,6 +52,7 @@ class RadarService {
         'schedule_id': scheduleId,
         'schedule_time': scheduleTime.toIso8601String(),
         'expires_at': expiresAt.toIso8601String(),
+        'participants': [user.id], // Creator otomatis jadi participant
         'created_at': DateTime.now().toIso8601String(),
       });
       
@@ -121,20 +119,23 @@ class RadarService {
     }
   }
 
-  // 4. Fetch My Radars
+  // 4. Fetch My Radars (UPDATED)
   Future<List<Map<String, dynamic>>> fetchMyRadars() async {
     final user = _supabase.auth.currentUser;
     if (user == null) return [];
 
     try {
+      // PERBAIKAN: Mengambil radar buatan sendiri ATAU radar di mana saya jadi participant
+      // Syntax 'participants.cs.{uid}' artinya column participants CONTAINS (cs) array {uid}
       final response = await _supabase
           .from('radars')
           .select('*, churches(name), profiles:user_id(full_name, avatar_url)')
-          .eq('user_id', user.id)
+          .or('user_id.eq.${user.id},participants.cs.{${user.id}}') 
           .order('created_at', ascending: false);
       
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
+      print("Error fetching my radars: $e");
       return [];
     }
   }
@@ -151,6 +152,7 @@ class RadarService {
           .eq('type', 'personal')
           .eq('target_user_id', user.id)
           .neq('status', 'active') 
+          .neq('status', 'declined') 
           .order('created_at', ascending: false);
 
       return List<Map<String, dynamic>>.from(response);

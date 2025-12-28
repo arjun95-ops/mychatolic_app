@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
-import 'package:mychatolic_app/widgets/safe_network_image.dart';
-import 'package:mychatolic_app/widgets/my_catholic_app_bar.dart';
-import 'package:mychatolic_app/pages/social_chat_detail_page.dart';
-import 'package:mychatolic_app/pages/create_radar_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:mychatolic_app/core/theme.dart';
 import 'package:mychatolic_app/services/radar_service.dart';
+import 'package:mychatolic_app/widgets/safe_network_image.dart';
+import 'package:mychatolic_app/pages/create_radar_screen.dart'; // Pastikan ada
+// import 'package:mychatolic_app/pages/schedule_page.dart'; // Opsional jika mau link ke jadwal
 
 class RadarPage extends StatefulWidget {
   const RadarPage({super.key});
@@ -16,31 +16,14 @@ class RadarPage extends StatefulWidget {
 }
 
 class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMixin {
-  final RadarService _radarService = RadarService();
   late TabController _tabController;
-  
-  // Future States
-  Future<List<Map<String, dynamic>>>? _invitesFuture;
-  Future<List<Map<String, dynamic>>>? _publicRadarsFuture;
-  Future<List<Map<String, dynamic>>>? _myRadarsFuture;
-
-  // PREMIUM COLORS
-  static const Color primaryBrand = Color(0xFF0088CC);
-  static const Color bgSurface = Color(0xFFF5F5F5);
+  final RadarService _radarService = RadarService();
+  final String _myUserId = Supabase.instance.client.auth.currentUser?.id ?? '';
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this); 
-    _refreshData();
-  }
-
-  void _refreshData() {
-    setState(() {
-      _invitesFuture = _radarService.fetchRadarInvites();
-      _publicRadarsFuture = _radarService.fetchPublicRadars();
-      _myRadarsFuture = _radarService.fetchMyRadars();
-    });
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -52,494 +35,203 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgSurface,
-      appBar: MyCatholicAppBar(
-        title: "Radar Misa",
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text("Radar Misa", style: GoogleFonts.outfit(color: Colors.black, fontWeight: FontWeight.bold)),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          isScrollable: false, // Fixed tabs for better width distribution
-          labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 16),
-          unselectedLabelStyle: GoogleFonts.outfit(fontSize: 16),
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
+          labelColor: kPrimary,
+          unselectedLabelColor: Colors.grey,
+          indicatorColor: kPrimary,
+          labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold),
           tabs: const [
-            Tab(text: "Undangan"), 
-            Tab(text: "Radar Publik"), 
-            Tab(text: "Radar Saya")
+            Tab(text: "Agenda Saya"),
+            Tab(text: "Eksplor"),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          // 1. Undangan (Invites)
-          _buildInvitesTab(),
-          // 2. Radar Publik
-          _buildRadarList(
-            future: _publicRadarsFuture, 
-            emptyMsg: "Belum ada aktivitas radar dari teman/paroki Anda.",
-            isPublic: true,
-          ),
-          // 3. Radar Saya
-          _buildRadarList(
-            future: _myRadarsFuture, 
-            emptyMsg: "Anda belum membuat radar. Tekan + untuk buat baru.",
-            isPublic: false,
-          ),
+          _buildMyAgendaTab(),
+          _buildPublicRadarTab(),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        heroTag: 'radar_fab',
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const CreateRadarScreen()),
-          );
-          if (result == true) {
-            _refreshData();
-          }
+        onPressed: () {
+           // Opsi: Tampilkan modal untuk memilih buat Radar Manual atau dari Jadwal
+           Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateRadarScreen()));
         },
-        backgroundColor: primaryBrand,
-        elevation: 4,
-        child: const Icon(Icons.add_rounded, color: Colors.white, size: 32),
+        backgroundColor: kPrimary,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildInvitesTab() {
+  // --- TAB 1: AGENDA SAYA ---
+  Widget _buildMyAgendaTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _invitesFuture,
+      future: _radarService.fetchMyRadars(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: primaryBrand));
+          return const Center(child: CircularProgressIndicator());
         }
-        if (snapshot.hasError) {
-          return _buildErrorState("Gagal memuat undangan: ${snapshot.error}");
-        }
-
-        final invites = snapshot.data ?? [];
-        if (invites.isEmpty) {
-          return _buildEmptyState("Belum ada undangan misa.");
-        }
-
-        return RefreshIndicator(
-          onRefresh: () async => _refreshData(),
-          color: primaryBrand,
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: invites.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 16),
-            itemBuilder: (context, index) {
-              return _InvitationCard(
-                radarData: invites[index],
-                onRefresh: _refreshData,
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildRadarList({
-    required Future<List<Map<String, dynamic>>>? future,
-    required String emptyMsg,
-    required bool isPublic,
-  }) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: primaryBrand));
-        }
-        if (snapshot.hasError) {
-          return _buildErrorState("Gagal memuat data.");
-        }
-
-        final radars = snapshot.data ?? [];
-        if (radars.isEmpty) {
-          return _buildEmptyState(emptyMsg);
-        }
-
-        return RefreshIndicator(
-          onRefresh: () async => _refreshData(),
-          color: primaryBrand,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            itemCount: radars.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 16),
-            itemBuilder: (context, index) {
-              return _RadarCard(radarData: radars[index], isPublic: isPublic);
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildEmptyState(String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.radar_rounded, size: 80, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey.shade500),
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.event_note, size: 64, color: Colors.grey[300]),
+                const SizedBox(height: 16),
+                Text("Belum ada rencana misa.", style: GoogleFonts.outfit(color: Colors.grey)),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextButton.icon(
-              onPressed: _refreshData,
-              icon: const Icon(Icons.refresh_rounded, color: primaryBrand),
-              label: Text("Refresh", style: GoogleFonts.outfit(color: primaryBrand, fontWeight: FontWeight.bold)),
-            )
-          ],
-        ),
-      ),
+          );
+        }
+
+        final agendas = snapshot.data!;
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: agendas.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 16),
+          itemBuilder: (context, index) {
+            return _buildAgendaCard(agendas[index]);
+          },
+        );
+      },
     );
   }
 
-  Widget _buildErrorState(String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline_rounded, size: 48, color: Color(0xFFE74C3C)),
-            const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center, style: GoogleFonts.outfit(color: const Color(0xFFE74C3C))),
-            TextButton(
-              onPressed: _refreshData,
-              child: const Text("Coba Lagi"),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-}
+  Widget _buildAgendaCard(Map<String, dynamic> item) {
+    final churchName = item['location_name'] ?? item['churches']?['name'] ?? 'Gereja';
+    final time = DateTime.parse(item['schedule_time']);
+    final isCreator = item['user_id'] == _myUserId;
+    final status = item['status'];
 
-class _InvitationCard extends StatefulWidget {
-  final Map<String, dynamic> radarData;
-  final VoidCallback onRefresh;
-
-  const _InvitationCard({required this.radarData, required this.onRefresh});
-
-  @override
-  State<_InvitationCard> createState() => _InvitationCardState();
-}
-
-class _InvitationCardState extends State<_InvitationCard> {
-  bool _isLoading = false;
-  final RadarService _radarService = RadarService();
-
-  Future<void> _respond(bool accept) async {
-    setState(() => _isLoading = true);
+    // Cari info partner (lawan bicara)
+    // Ingat logika: participants array mungkin tidak di-join, tapi kita punya 'profiles' via user_id (creator).
+    // Untuk Personal Radar, kita perlu tahu siapa temannya.
+    // Logic sederhana: Jika saya creator, tampilkan 'Invited Friend'. Jika saya invited, tampilkan 'Creator'.
+    // Karena keterbatasan fetch join kompleks, kita gunakan display dasar dulu.
     
-    try {
-      final radarId = widget.radarData['id'].toString();
-      // Use 'profiles' key for sender info
-      final profiles = widget.radarData['profiles'] as Map<String, dynamic>? ?? {};
-      final senderId = widget.radarData['user_id'].toString();
-
-      if (accept) {
-        await _radarService.acceptPersonalRadar(radarId, senderId);
-        if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-             content: Text("Undangan diterima. Chat terhubung."), 
-             backgroundColor: Color(0xFF2ECC71)
-           ));
-        }
-      } else {
-        // Decline: Update status to 'declined'
-        // Using direct supabase client for now as Service doesn't have decline method exposed yet
-        final supabase = Supabase.instance.client;
-        await supabase.from('radars').update({
-          'status': 'declined'
-        }).eq('id', radarId);
-
-        if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-             content: Text("Undangan ditolak."), 
-             backgroundColor: Colors.grey
-           ));
-        }
-      }
-
-      widget.onRefresh();
-
-    } catch (e) {
-      if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal memproses: $e"), backgroundColor: const Color(0xFFE74C3C)));
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    // Warna Status
+    Color statusColor = Colors.green;
+    String statusText = "Terjadwal";
+    if (status == 'pending') {
+      statusColor = Colors.orange;
+      statusText = "Menunggu Respon";
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final data = widget.radarData;
-    // Map properties based on SupabaseService fetchRadarInvites
-    final sender = data['profiles'] as Map<String, dynamic>? ?? {};
-    final church = data['churches'] as Map<String, dynamic>? ?? {};
-    
-    final scheduleStr = data['schedule_time'] as String?;
-    final dateTime = scheduleStr != null ? DateTime.parse(scheduleStr) : DateTime.now();
-    final dateFormatted = DateFormat("EEE, d MMM y • HH:mm", "id_ID").format(dateTime);
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Header: Sender Info
-          Padding(
-            padding: const EdgeInsets.all(16),
+          // Header Tanggal & Jam
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: kPrimary.withOpacity(0.05),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                ClipOval(
-                  child: SafeNetworkImage(
-                    imageUrl: sender['avatar_url'] ?? '',
-                    width: 40,
-                    height: 40,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(sender['full_name'] ?? "Teman", style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black)),
-                      Text("Mengundang Anda", style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey.shade500)),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today, size: 16, color: kPrimary),
+                    const SizedBox(width: 8),
+                    Text(DateFormat("EEEE, d MMMM yyyy").format(time), style: GoogleFonts.outfit(color: kPrimary, fontWeight: FontWeight.bold)),
+                  ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFF0088CC).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-                  child: Text("Personal Invite", style: GoogleFonts.outfit(color: const Color(0xFF0088CC), fontSize: 10, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Text(statusText, style: GoogleFonts.outfit(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
                 )
               ],
             ),
           ),
-          
-          Divider(height: 1, color: Colors.grey.shade100),
-
-          // 2. Body: Event Details
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text("Mengajak Anda Misa di", style: GoogleFonts.outfit(color: Colors.grey.shade400, fontSize: 13)),
-                const SizedBox(height: 4),
-                Text(
-                   church['name'] ?? data['location_name'] ?? "Lokasi tidak diketahui",
-                   style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 18, color: Colors.black87),
+                // Jam Besar
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                  child: Text(DateFormat("HH:mm").format(time), style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black87)),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                     Container(
-                       padding: const EdgeInsets.all(6),
-                       decoration: BoxDecoration(color: const Color(0xFF0088CC).withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-                       child: const Icon(Icons.calendar_today_rounded, color: Color(0xFF0088CC), size: 16),
-                     ),
-                     const SizedBox(width: 10),
-                     Text(dateFormatted, style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87)),
-                  ],
+                const SizedBox(width: 16),
+                // Detail
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(churchName, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 4),
+                      Text(item['description'] ?? "Misa Bersama", style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
                 ),
-                
-                if (data['description'] != null && data['description'].toString().isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(12)),
-                    child: Text(
-                      "\"${data['description']}\"", 
-                      style: GoogleFonts.outfit(fontStyle: FontStyle.italic, color: Colors.grey.shade600, fontSize: 14)
-                    ),
-                  )
-                ],
               ],
             ),
           ),
-
-          // 3. Footer: Actions
-          if (_isLoading)
-            const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: Color(0xFF0088CC))))
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 48,
-                      child: OutlinedButton(
-                        onPressed: () => _respond(false),
-                        style: OutlinedButton.styleFrom(
-                           foregroundColor: const Color(0xFFE74C3C),
-                           side: const BorderSide(color: Color(0xFFE74C3C)),
-                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                        ),
-                        child: Text("Tolak", style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SizedBox(
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: () => _respond(true),
-                        style: ElevatedButton.styleFrom(
-                           backgroundColor: const Color(0xFF2ECC71),
-                           foregroundColor: Colors.white,
-                           elevation: 0,
-                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                        ),
-                        child: Text("Terima", style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
         ],
       ),
     );
   }
-}
 
-class _RadarCard extends StatelessWidget {
-  final Map<String, dynamic> radarData;
-  final bool isPublic;
+  // --- TAB 2: PUBLIC RADAR ---
+  Widget _buildPublicRadarTab() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _radarService.fetchPublicRadars(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        
+        final radars = snapshot.data ?? [];
+        if (radars.isEmpty) {
+          return Center(child: Text("Belum ada radar di sekitarmu.", style: GoogleFonts.outfit(color: Colors.grey)));
+        }
 
-  const _RadarCard({required this.radarData, this.isPublic = true});
-
-  @override
-  Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF0088CC);
-
-    final church = radarData['churches'] as Map<String, dynamic>? ?? {};
-    final String title = radarData['title'] ?? 'Misa Bersama';
-    final String churchName = church['name'] ?? radarData['location_name'] ?? 'Gereja tidak diketahui';
-    final String scheduleRaw = radarData['schedule_time'] ?? DateTime.now().toIso8601String();
-    
-    final DateTime scheduleTime = DateTime.parse(scheduleRaw);
-    final String formattedSchedule = DateFormat("EEEE, d MMM y • HH:mm", "id_ID").format(scheduleTime);
-    final String? chatGroupId = radarData['chat_group_id'];
-    
-    final bool isPersonal = radarData['type'] == 'personal';
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            if (chatGroupId != null) {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => SocialChatDetailPage(
-                chatId: chatGroupId,
-                opponentProfile: {
-                  'full_name': title,
-                  'avatar_url': "https://images.unsplash.com/photo-1548625361-ad8f51ec0429?q=80&w=200", 
-                  'is_group': true,
-                },
-              )));
-            }
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: radars.length,
+          itemBuilder: (context, index) {
+            final item = radars[index];
+            final creator = item['profiles'] ?? {};
+            return Card(
+              margin: const EdgeInsets.only(bottom: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(12),
+                leading: ClipOval(
+                  child: SafeNetworkImage(imageUrl: creator['avatar_url'] ?? '', width: 50, height: 50, fit: BoxFit.cover),
+                ),
+                title: Text(creator['full_name'] ?? 'User', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: primaryColor.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(isPersonal ? Icons.person_rounded : Icons.church_rounded, color: primaryColor, size: 24),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 4),
-                          Text(churchName, style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey.shade500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ],
-                      ),
-                    ),
+                    Text("Misa di ${item['churches']?['name'] ?? 'Gereja'}", style: GoogleFonts.outfit(color: Colors.black87)),
+                    Text(DateFormat("d MMM HH:mm").format(DateTime.parse(item['schedule_time'])), style: GoogleFonts.outfit(color: kPrimary, fontSize: 12)),
                   ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16), 
-                  child: Divider(height: 1, color: Colors.grey.shade100)
+                trailing: ElevatedButton(
+                  onPressed: () {}, // Implementasi Join jika perlu
+                  style: ElevatedButton.styleFrom(backgroundColor: kPrimary, shape: const CircleBorder(), padding: const EdgeInsets.all(12)),
+                  child: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 20),
                 ),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time_rounded, size: 16, color: primaryColor),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(formattedSchedule, style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87))),
-                  ],
-                ),
-                if (chatGroupId != null) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 44,
-                    child: OutlinedButton(
-                      onPressed: () {
-                         Navigator.push(context, MaterialPageRoute(builder: (_) => SocialChatDetailPage(
-                           chatId: chatGroupId,
-                           opponentProfile: {
-                             'full_name': title,
-                             'avatar_url': "https://images.unsplash.com/photo-1548625361-ad8f51ec0429?q=80&w=200",
-                             'is_group': true,
-                           },
-                         )));
-                      },
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: primaryColor), 
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                      ),
-                      child: Text("Buka Chat Radar", style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: primaryColor)),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
