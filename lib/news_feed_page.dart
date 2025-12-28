@@ -4,6 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:mychatolic_app/core/theme.dart';
+import 'package:mychatolic_app/services/social_service.dart';
+import 'package:mychatolic_app/models/user_post.dart';
+import 'package:mychatolic_app/widgets/post_card.dart';
 
 class NewsFeedPage extends StatefulWidget {
   const NewsFeedPage({super.key});
@@ -14,6 +17,7 @@ class NewsFeedPage extends StatefulWidget {
 
 class _NewsFeedPageState extends State<NewsFeedPage> {
   final _supabase = Supabase.instance.client;
+  final SocialService _socialService = SocialService();
   String _filterValue = "Global / All";
   String _userName = "Teman";
 
@@ -206,13 +210,30 @@ class _NewsFeedPageState extends State<NewsFeedPage> {
           // 3. POSTS LIST
           SliverPadding(
              padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-             sliver: StreamBuilder<List<Map<String, dynamic>>>(
-                stream: Stream.value([]), // TODO: Connect to 'posts' table
+             sliver: FutureBuilder<List<UserPost>>(
+                future: _socialService.fetchPosts(limit: 10), // Fetch 10 posts
                 builder: (context, snapshot) {
-                  // MOCK DATA FOR UI VISUALIZATION
-                  final isEmpty = true; // Force empty for now based on previous context
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                     return SliverToBoxAdapter(
+                       child: Padding(
+                         padding: const EdgeInsets.only(top: 40),
+                         child: Center(child: CircularProgressIndicator(color: kPrimary)),
+                       ),
+                     );
+                  }
 
-                  if (isEmpty) {
+                  if (snapshot.hasError) {
+                    return SliverToBoxAdapter(
+                       child: Padding(
+                         padding: const EdgeInsets.all(20),
+                         child: Text("Error loading posts: ${snapshot.error}"),
+                       ),
+                    );
+                  }
+
+                  final posts = snapshot.data ?? [];
+
+                  if (posts.isEmpty) {
                     return SliverToBoxAdapter(
                       child: Container(
                         margin: const EdgeInsets.only(top: 40),
@@ -260,7 +281,21 @@ class _NewsFeedPageState extends State<NewsFeedPage> {
                   }
                   
                   // If data exists...
-                  return SliverList(delegate: SliverChildBuilderDelegate((ctx, idx) => const SizedBox(), childCount: 0));
+                  return SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: PostCard(
+                            post: posts[index],
+                            socialService: _socialService,
+                            heroTagPrefix: 'feed',
+                          ),
+                        );
+                      },
+                      childCount: posts.length,
+                    ),
+                  );
                 },
              ),
           )

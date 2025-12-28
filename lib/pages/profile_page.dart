@@ -8,6 +8,7 @@ import 'package:mychatolic_app/services/profile_service.dart';
 import 'package:mychatolic_app/services/story_service.dart';
 import 'package:mychatolic_app/services/chat_service.dart';
 import 'package:mychatolic_app/services/supabase_service.dart'; // IMPORTANT
+import 'package:mychatolic_app/services/social_service.dart'; // IMPORTANT
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
 import 'package:mychatolic_app/widgets/post_card.dart'; // IMPORTANT
 import 'package:mychatolic_app/pages/post_detail_screen.dart'; // IMPORTANT
@@ -36,6 +37,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   final StoryService _storyService = StoryService();
   final ChatService _chatService = ChatService();
   final SupabaseService _supabaseService = SupabaseService(); // Used for posts to get Likes correctly
+  final SocialService _socialService = SocialService();
   final _supabase = Supabase.instance.client;
 
   late TabController _tabController;
@@ -121,7 +123,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     setState(() => _isLoadingPosts = true);
     
     // 1. Fetch via SupabaseService (This includes 'is_liked_by_me' logic!)
-    List<UserPost> allPosts = await _supabaseService.fetchPosts(userId: userId);
+    List<UserPost> allPosts = await _socialService.fetchPosts(userId: userId);
 
     // 2. Filter Logic "Sapu Jagat"
     final List<UserPost> photos = [];
@@ -416,7 +418,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         // USE POST CARD FOR INTERACTIONS
         return PostCard(
           post: post, 
-          supabaseService: _supabaseService,
+          socialService: _socialService,
           onPostUpdated: (updatedPost) {
             setState(() {
               _textPosts[index] = updatedPost;

@@ -4,7 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
 import '../models/schedule.dart';
-import '../services/supabase_service.dart';
+import '../services/master_data_service.dart';
+import '../services/supabase_service.dart'; // Still needed for other calls? Check logic.
 
 class CreateRadarScreen extends StatefulWidget {
   const CreateRadarScreen({super.key});
@@ -15,7 +16,7 @@ class CreateRadarScreen extends StatefulWidget {
 
 class _CreateRadarScreenState extends State<CreateRadarScreen> {
   final _supabase = Supabase.instance.client;
-  final SupabaseService _supabaseService = SupabaseService();
+  final MasterDataService _masterService = MasterDataService();
   
   // Theme Colors (Premium)
   static const Color primaryBrand = Color(0xFF0088CC);
@@ -66,7 +67,7 @@ class _CreateRadarScreenState extends State<CreateRadarScreen> {
   Future<void> _fetchSchedules(String churchId) async {
     setState(() => _isLoading = true);
     try {
-      final schedules = await _supabaseService.fetchSchedules(churchId);
+      final schedules = await _masterService.fetchSchedules(churchId);
       
       if (mounted) {
         setState(() {

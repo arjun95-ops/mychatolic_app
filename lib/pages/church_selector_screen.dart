@@ -5,7 +5,7 @@ import 'package:mychatolic_app/models/church.dart';
 import 'package:mychatolic_app/models/country.dart';
 import 'package:mychatolic_app/models/diocese.dart';
 import 'package:mychatolic_app/pages/church_detail_screen.dart'; // NEW
-import 'package:mychatolic_app/services/supabase_service.dart';
+import 'package:mychatolic_app/services/master_data_service.dart';
 
 class ChurchSelectorScreen extends StatefulWidget {
   const ChurchSelectorScreen({super.key});
@@ -15,7 +15,7 @@ class ChurchSelectorScreen extends StatefulWidget {
 }
 
 class _ChurchSelectorScreenState extends State<ChurchSelectorScreen> {
-  final SupabaseService _supabaseService = SupabaseService();
+  final MasterDataService _masterService = MasterDataService();
 
   // Data Lists
   List<Country> _countries = [];
@@ -40,7 +40,7 @@ class _ChurchSelectorScreenState extends State<ChurchSelectorScreen> {
 
   Future<void> _fetchCountries() async {
     try {
-      final countries = await _supabaseService.fetchCountries();
+      final countries = await _masterService.fetchCountries();
       setState(() {
         _countries = countries;
         _isLoadingCountries = false;
@@ -64,7 +64,7 @@ class _ChurchSelectorScreenState extends State<ChurchSelectorScreen> {
     });
 
     try {
-      final dioceses = await _supabaseService.fetchDioceses(country.id);
+      final dioceses = await _masterService.fetchDioceses(country.id);
       setState(() {
         _dioceses = dioceses;
         _isLoadingDioceses = false;
@@ -86,7 +86,7 @@ class _ChurchSelectorScreenState extends State<ChurchSelectorScreen> {
     });
 
     try {
-      final churches = await _supabaseService.fetchChurches(diocese.id);
+      final churches = await _masterService.fetchChurches(diocese.id);
       setState(() {
         _churches = churches;
         _isLoadingChurches = false;

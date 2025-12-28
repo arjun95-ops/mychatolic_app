@@ -3,7 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
-import 'package:mychatolic_app/services/supabase_service.dart';
+import 'package:mychatolic_app/services/master_data_service.dart';
+import 'package:mychatolic_app/services/radar_service.dart';
 import 'package:mychatolic_app/models/schedule.dart';
 import 'package:mychatolic_app/pages/search/friend_search_page.dart';
 
@@ -17,7 +18,8 @@ class ChurchDetailPage extends StatefulWidget {
 }
 
 class _ChurchDetailPageState extends State<ChurchDetailPage> {
-  final SupabaseService _supabaseService = SupabaseService();
+  final MasterDataService _masterService = MasterDataService();
+  final RadarService _radarService = RadarService();
   bool _isLoading = true;
 
   // Grouped Data: Key = Day Name (e.g. "Minggu"), Value = List of Schedules
@@ -45,7 +47,7 @@ class _ChurchDetailPageState extends State<ChurchDetailPage> {
       }
 
       // Fetch schedules using the Service
-      final schedules = await _supabaseService.fetchSchedules(churchId);
+      final schedules = await _masterService.fetchSchedules(churchId);
 
       // Explicit Sort: Ensure order is 100% correct
       // 1. Day of Week Ascending (0=Sunday, 6=Saturday)
@@ -205,7 +207,7 @@ class _ChurchDetailPageState extends State<ChurchDetailPage> {
                            final scheduleDate = DateTime(now.year, now.month, now.day + daysToAdd, hour, minute);
 
                            // 5. Call Service
-                           await _supabaseService.createPersonalRadar(
+                           await _radarService.createPersonalRadar(
                              targetUserId: selectedFriend['id'].toString(),
                              churchId: schedule.churchId,
                              churchName: widget.churchData['name'] ?? 'Gereja Ini',
@@ -288,7 +290,7 @@ class _ChurchDetailPageState extends State<ChurchDetailPage> {
                           
                           setModalState(() => isSubmitting = true);
                           try {
-                            await _supabaseService.createRadarFromSchedule(
+                            await _radarService.createRadarFromSchedule(
                               scheduleId: schedule.id,
                               notes: notesController.text,
                             );
@@ -568,9 +570,8 @@ class _ChurchDetailPageState extends State<ChurchDetailPage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Left: Time & Language
+                // Time & Language
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -604,12 +605,6 @@ class _ChurchDetailPageState extends State<ChurchDetailPage> {
                       ),
                     ],
                   ),
-                ),
-                // Right: Radar Icon
-                Icon(
-                  Icons.share_location_rounded,
-                  color: Colors.orange.shade700,
-                  size: 24,
                 ),
               ],
             ),

@@ -73,13 +73,13 @@ class UserPost {
         : (json['type'] ?? 'text');
 
     return UserPost(
-      id: json['id'].toString(),
+      id: json['id']?.toString() ?? '',
       userId: json['user_id']?.toString() ?? '',
-      caption: json['caption'],
+      caption: json['caption']?.toString(), // Safely convert
       imageUrl: img,
       type: postType,
       createdAt: json['created_at'] != null 
-          ? DateTime.parse(json['created_at']) 
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() 
           : DateTime.now(),
       
       likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,

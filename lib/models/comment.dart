@@ -32,16 +32,29 @@ class Comment {
         if (list.isNotEmpty) {
            authorProfile = Profile.fromJson(list.first);
         }
-      } else if (json['profiles'] is Map) { // Explicitly handle Map case
+      } else if (json['profiles'] is Map<String, dynamic>) { // Strict Map check
         authorProfile = Profile.fromJson(json['profiles']);
+      } else if (json['profiles'] is Map) { // Dynamic Map Check
+        // Try strict cast
+        try {
+          authorProfile = Profile.fromJson(Map<String, dynamic>.from(json['profiles']));
+        } catch (_) {}
       }
     }
 
+    // Defensive Date Parsing
+    DateTime date;
+    if (json['created_at'] != null) {
+      date = DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now();
+    } else {
+      date = DateTime.now();
+    }
+
     return Comment(
-      id: json['id'].toString(),
-      userId: json['user_id'].toString(),
-      content: json['content'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      id: json['id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      content: json['content']?.toString() ?? '', // CRITICAL: Prevent null content crash
+      createdAt: date,
       author: authorProfile,
       parentId: json['parent_id']?.toString(), // Handle null
       // replies will be populated manually later or if json has it

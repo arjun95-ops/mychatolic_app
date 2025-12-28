@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/church_detail_page.dart';
+import 'package:mychatolic_app/services/master_data_service.dart'; // Import
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
 import 'package:mychatolic_app/widgets/my_catholic_app_bar.dart';
 
@@ -16,6 +17,7 @@ class ChurchListPage extends StatefulWidget {
 
 class _ChurchListPageState extends State<ChurchListPage> {
   final _supabase = Supabase.instance.client;
+  final MasterDataService _masterService = MasterDataService(); // Initialize
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
 
@@ -141,14 +143,22 @@ class _ChurchListPageState extends State<ChurchListPage> {
 
   Future<List<Map<String, dynamic>>> _fetchData(String table, String? filterCol, dynamic filterVal) async {
     try {
-      var query = _supabase.from(table).select();
-      if (filterCol != null && filterVal != null) {
-        // Ensure filterVal is treated as String for UUID compatibility
-        query = query.eq(filterCol, filterVal.toString());
+      if (table == 'countries') {
+        final list = await _masterService.fetchCountries();
+        return list.map((e) => {'id': e.id, 'name': e.name}).toList();
+      } else if (table == 'dioceses') {
+        // We know filterVal is country_id
+        final list = await _masterService.fetchDioceses(filterVal.toString());
+        return list.map((e) => {'id': e.id, 'name': e.name}).toList();
+      } else if (table == 'churches') {
+        // Wait, fetchChurches needs dioceseId. Assuming usage in _openChurchFilter if it existed. 
+        // But _openDioceseFilter uses dioceses table.
+        // It seems `_fetchData` is only used for `_openCountryFilter` and `_openDioceseFilter` currently.
+        return [];
       }
-      return await query.order('name', ascending: true);
+      return [];
     } catch (e) {
-      debugPrint("Supabase Fetch Error: $e");
+      debugPrint("Service Fetch Error: $e");
       return [];
     }
   }

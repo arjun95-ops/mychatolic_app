@@ -5,6 +5,8 @@ import 'package:mychatolic_app/models/user_post.dart';
 import 'package:mychatolic_app/pages/notification_screen.dart';
 import 'package:mychatolic_app/pages/post_detail_screen.dart';
 import 'package:mychatolic_app/services/supabase_service.dart';
+import 'package:mychatolic_app/services/social_service.dart';
+import 'package:mychatolic_app/services/master_data_service.dart'; // Import
 import 'package:mychatolic_app/widgets/post_card.dart';
 import 'package:mychatolic_app/widgets/my_catholic_app_bar.dart';
 
@@ -17,6 +19,8 @@ class HomeScreen extends StatefulWidget {
 
 class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMixin {
   final SupabaseService _supabaseService = SupabaseService();
+  final SocialService _socialService = SocialService();
+  final MasterDataService _masterService = MasterDataService(); // Init
   final SupabaseClient _supabase = Supabase.instance.client;
   final ScrollController _scrollController = ScrollController();
 
@@ -76,7 +80,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
     });
     
     try {
-      final posts = await _supabaseService.fetchPosts(
+      final posts = await _socialService.fetchPosts( // Use SocialService
         filterType: _filterType,
         filterId: _filterId?.toString(),
         page: _currentPage,
@@ -111,7 +115,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
 
     try {
       final nextPage = _currentPage + 1;
-      final posts = await _supabaseService.fetchPosts(
+      final posts = await _socialService.fetchPosts( // Use SocialService
         filterType: _filterType,
         filterId: _filterId?.toString(),
         page: nextPage,
@@ -242,7 +246,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
                               // Use the new reusable PostCard
                               return PostCard(
                                 post: post, 
-                                supabaseService: _supabaseService,
+                                socialService: _socialService, // Pass SocialService
                                 onTap: () {
                                    Navigator.push(context, MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)));
                                 },
@@ -275,7 +279,7 @@ class _FilterSearchSheet extends StatefulWidget {
 
 class _FilterSearchSheetState extends State<_FilterSearchSheet> {
   final _searchController = TextEditingController();
-  final SupabaseService _supabaseService = SupabaseService();
+  final MasterDataService _masterService = MasterDataService();
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearching = false;
   
@@ -328,7 +332,7 @@ class _FilterSearchSheetState extends State<_FilterSearchSheet> {
     }
     
     setState(() => _isSearching = true);
-    final results = await _supabaseService.searchLocations(query);
+    final results = await _masterService.searchLocations(query);
     if (mounted) {
       setState(() => _searchResults = results);
     }

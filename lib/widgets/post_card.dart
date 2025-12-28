@@ -6,7 +6,7 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import 'package:mychatolic_app/core/theme.dart';
 import 'package:mychatolic_app/models/user_post.dart';
-import 'package:mychatolic_app/services/supabase_service.dart';
+import 'package:mychatolic_app/services/social_service.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
 import 'package:mychatolic_app/pages/post_detail_screen.dart';
 import 'package:mychatolic_app/pages/other_user_profile_page.dart';
@@ -14,7 +14,7 @@ import 'package:mychatolic_app/pages/edit_post_page.dart';
 
 class PostCard extends StatefulWidget {
   final UserPost post;
-  final SupabaseService supabaseService; 
+  final SocialService socialService; 
   final VoidCallback? onTap; // Null means default navigation behavior
   final Function(UserPost)? onPostUpdated;
   final String? heroTagPrefix;
@@ -22,7 +22,7 @@ class PostCard extends StatefulWidget {
   const PostCard({
     super.key, 
     required this.post, 
-    required this.supabaseService,
+    required this.socialService,
     this.onTap,
     this.onPostUpdated,
     this.heroTagPrefix,
@@ -47,7 +47,7 @@ class _PostCardState extends State<PostCard> {
     commentsCount = widget.post.commentsCount;
     
     // 2. Subscribe to Global Broadcast Stream
-    _postSubscription = SupabaseService.postUpdateStream.listen((updatedPost) {
+    _postSubscription = SocialService.postUpdateStream.listen((updatedPost) {
       if (!mounted) return;
       
       // If this event matches OUR post ID, update local state
@@ -89,7 +89,7 @@ class _PostCardState extends State<PostCard> {
       // 3. Sync Back BROADCAST on Return (if Detail screen returned data)
       if (result is UserPost && mounted) {
            // Broadcast to ensure all views (Feed, Profile, etc.) are in sync with what happened in Detail
-           SupabaseService.broadcastPostUpdate(result);
+           SocialService.broadcastPostUpdate(result);
       }
     }
   }
@@ -112,14 +112,14 @@ class _PostCardState extends State<PostCard> {
     );
 
     // 3. BROADCAST IMMEDIATELY (Instantly updates other screens)
-    SupabaseService.broadcastPostUpdate(updatedPost);
+    SocialService.broadcastPostUpdate(updatedPost);
     
     // 4. Notify Parent (Callback) - Legacy/Direct parent usage
     widget.onPostUpdated?.call(updatedPost);
     
     // 5. Server Request
     try {
-      await widget.supabaseService.toggleLike(widget.post.id);
+      await widget.socialService.toggleLike(widget.post.id);
     } catch (e) {
       if (mounted) {
         // Revert on Failure
@@ -132,7 +132,7 @@ class _PostCardState extends State<PostCard> {
         });
         
         // Revert Broadcast
-        SupabaseService.broadcastPostUpdate(widget.post.copyWith(
+        SocialService.broadcastPostUpdate(widget.post.copyWith(
            isLikedByMe: revertedLocked,
            likesCount: revertedCount,
            commentsCount: commentsCount
@@ -154,7 +154,7 @@ class _PostCardState extends State<PostCard> {
   }
 
   void _showPostOptions(BuildContext context) {
-    final currentUser = widget.supabaseService.currentUser;
+    final currentUser = widget.socialService.currentUser;
     final bool isMyPost = currentUser != null && widget.post.author?.id == currentUser.id;
 
     showModalBottomSheet(
@@ -179,7 +179,7 @@ class _PostCardState extends State<PostCard> {
                     );
                     
                     if (result is UserPost && context.mounted) {
-                       SupabaseService.broadcastPostUpdate(result); // Broadcast Edit
+                       SocialService.broadcastPostUpdate(result); // Broadcast Edit
                        widget.onPostUpdated?.call(result); 
                        
                        ScaffoldMessenger.of(context).showSnackBar(
@@ -240,7 +240,7 @@ class _PostCardState extends State<PostCard> {
 
   Future<void> _deletePost() async {
     try {
-      await widget.supabaseService.deletePost(widget.post.id);
+      await widget.socialService.deletePost(widget.post.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Postingan berhasil dihapus"))
@@ -295,7 +295,7 @@ class _PostCardState extends State<PostCard> {
 
   Future<void> _submitReport(String reason) async {
     try {
-      await widget.supabaseService.reportPost(widget.post.id, reason);
+      await widget.socialService.reportPost(widget.post.id, reason);
       if (mounted) {
          ScaffoldMessenger.of(context).showSnackBar(
            const SnackBar(content: Text("Laporan berhasil dikirim. Terima kasih."))

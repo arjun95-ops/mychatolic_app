@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/core/theme.dart';
-import 'package:mychatolic_app/services/supabase_service.dart';
+import 'package:mychatolic_app/services/social_service.dart';
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -15,7 +15,7 @@ class CreatePostScreen extends StatefulWidget {
 }
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
-  final SupabaseService _supabaseService = SupabaseService();
+  final SocialService _socialService = SocialService();
   final TextEditingController _contentController = TextEditingController();
   
   File? _imageFile;
@@ -84,11 +84,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       
       // 1. Upload Image First
       if (_imageFile != null) {
-         imageUrl = await _supabaseService.uploadPostImage(_imageFile!);
+         imageUrl = await _socialService.uploadPostImage(_imageFile!);
       }
 
       // 2. Create Post
-      await _supabaseService.createPost(
+      await _socialService.createPost(
         content: content,
         imageUrl: imageUrl, // Pass URL, not file
         type: _imageFile != null ? 'photo' : 'text',

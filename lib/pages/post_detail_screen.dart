@@ -5,7 +5,7 @@ import 'package:mychatolic_app/core/theme.dart';
 import 'package:mychatolic_app/models/comment.dart';
 import 'package:mychatolic_app/models/user_post.dart';
 import 'package:mychatolic_app/models/profile.dart'; // IMPORT PROFILE MODEL
-import 'package:mychatolic_app/services/supabase_service.dart';
+import 'package:mychatolic_app/services/social_service.dart';
 import 'package:mychatolic_app/widgets/post_card.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -19,7 +19,7 @@ class PostDetailScreen extends StatefulWidget {
 }
 
 class _PostDetailScreenState extends State<PostDetailScreen> {
-  final SupabaseService _supabaseService = SupabaseService();
+  final SocialService _socialService = SocialService();
   final TextEditingController _commentController = TextEditingController();
   
   List<Comment> _comments = [];
@@ -44,13 +44,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _refreshPostData() async {
-    final freshPost = await _supabaseService.fetchPostById(widget.post.id);
+    final freshPost = await _socialService.fetchPostById(widget.post.id);
     if (freshPost != null && mounted) {
       setState(() {
         _post = freshPost;
       });
       // Broadcast this fresh data to Home/Profile as well!
-      SupabaseService.broadcastPostUpdate(freshPost);
+      SocialService.broadcastPostUpdate(freshPost);
     }
   }
 
@@ -91,7 +91,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ),
       callback: (payload) {
         print("❤️ Realtime LIKE Update: $payload");
-        final myId = _supabaseService.currentUser?.id;
+        final myId = _socialService.currentUser?.id;
 
         if (payload.eventType == PostgresChangeEvent.insert) {
            final newRecord = payload.newRecord;
@@ -129,13 +129,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       _post = _post.copyWith(likesCount: _post.likesCount + delta);
     });
     // Broadcast so Home knows too
-    SupabaseService.broadcastPostUpdate(_post);
+    SocialService.broadcastPostUpdate(_post);
   }
 
   void _handleOptimisticCommentInsert(PostgresChangePayload payload) {
       try {
         final json = payload.newRecord;
-        final currentUser = _supabaseService.currentUser;
+        final currentUser = _socialService.currentUser;
         final isMyComment = currentUser != null && json['user_id'] == currentUser.id;
         
         // Only if NOT my comment (since I added mine optimistically or want to see others instantly)
@@ -161,7 +161,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
              _comments.add(newItem);
              _post = _post.copyWith(commentsCount: _post.commentsCount + 1);
            });
-           SupabaseService.broadcastPostUpdate(_post);
+           SocialService.broadcastPostUpdate(_post);
         }
       } catch (e) {
         print("Optimistic insert error: $e");
@@ -178,7 +178,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _fetchComments() async {
     try {
-      final comments = await _supabaseService.fetchComments(widget.post.id);
+      final comments = await _socialService.fetchComments(widget.post.id);
       if (mounted) {
         setState(() {
           _comments = comments;
@@ -207,7 +207,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     });
 
     try {
-      await _supabaseService.addComment(
+      await _socialService.addComment(
         widget.post.id, 
         content, 
         parentId: replyToId
@@ -233,7 +233,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
   Future<void> _handleLikeComment(Comment comment) async {
     try {
-      await _supabaseService.toggleCommentLike(comment.id);
+      await _socialService.toggleCommentLike(comment.id);
       _fetchComments(); // Refresh to update count/icon
     } catch (e) {
       // ignore
@@ -250,7 +250,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           onPressed: () async {
             Navigator.pop(context);
             try {
-              await _supabaseService.reportComment(comment.id, r);
+              await _socialService.reportComment(comment.id, r);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Laporan terkirim")));
               }
@@ -298,7 +298,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     // 1. Post Content
                     PostCard(
                       post: _post, 
-                      supabaseService: _supabaseService,
+                      socialService: _socialService,
                       onTap: () {}, // Disable navigation to self
                       onPostUpdated: (updated) {
                          // Update local _post state immediately when child PostCard changes (e.g. Like)
@@ -306,7 +306,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           _post = updated;
                         });
                         // Broadcast change upwards
-                        SupabaseService.broadcastPostUpdate(updated);
+                        SocialService.broadcastPostUpdate(updated);
                       },
                       heroTagPrefix: 'detail',
                     ),

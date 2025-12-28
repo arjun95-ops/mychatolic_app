@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mychatolic_app/core/theme.dart';
 import 'package:mychatolic_app/models/church.dart';
 import 'package:mychatolic_app/models/schedule.dart';
-import 'package:mychatolic_app/services/supabase_service.dart';
+import 'package:mychatolic_app/services/master_data_service.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
 
 class ChurchDetailScreen extends StatefulWidget {
@@ -16,13 +16,13 @@ class ChurchDetailScreen extends StatefulWidget {
 }
 
 class _ChurchDetailScreenState extends State<ChurchDetailScreen> {
-  final SupabaseService _supabaseService = SupabaseService();
+  final MasterDataService _masterService = MasterDataService();
   late Future<List<Schedule>> _schedulesFuture;
 
   @override
   void initState() {
     super.initState();
-    _schedulesFuture = _supabaseService.fetchSchedules(widget.church.id);
+    _schedulesFuture = _masterService.fetchSchedules(widget.church.id);
   }
 
   // Convert int day to String name

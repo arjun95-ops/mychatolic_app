@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/services/supabase_service.dart';
+import 'package:mychatolic_app/services/radar_service.dart';
 
 class CreateInvitePage extends StatefulWidget {
   final String targetUserId;
@@ -21,6 +22,7 @@ class CreateInvitePage extends StatefulWidget {
 
 class _CreateInvitePageState extends State<CreateInvitePage> {
   final SupabaseService _supabaseService = SupabaseService();
+  final RadarService _radarService = RadarService();
   final _supabase = Supabase.instance.client;
 
   // Controllers
@@ -136,7 +138,7 @@ class _CreateInvitePageState extends State<CreateInvitePage> {
         _selectedTime!.minute,
       );
 
-      await _supabaseService.createPersonalRadar(
+      await _radarService.createPersonalRadar(
         targetUserId: widget.targetUserId,
         churchId: _selectedChurchId!,
         churchName: _churchController.text,
