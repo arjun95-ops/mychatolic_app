@@ -205,4 +205,33 @@ class RadarService {
       return [];
     }
   }
+
+  // 7. Delete (Creator) or Decline (Invitee)
+  Future<void> deleteOrDeclineRadar(String radarId) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      // Cek owner radar
+      final data = await _supabase
+          .from('radars')
+          .select('user_id')
+          .eq('id', radarId)
+          .single();
+      
+      final ownerId = data['user_id'];
+
+      if (ownerId == user.id) {
+        // Saya Creator -> Hapus Permanen
+        await _supabase.from('radars').delete().eq('id', radarId);
+      } else {
+        // Saya Invitee -> Tolak Undangan (Set status declined)
+        // Atau bisa juga remove user dari array participants jika logikanya array based.
+        // Untuk saat ini kita set status declined agar aman.
+        await _supabase.from('radars').update({'status': 'declined'}).eq('id', radarId);
+      }
+    } catch (e) {
+      throw Exception("Gagal menghapus/menolak radar: $e");
+    }
+  }
 }

@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // Pages
 import 'package:mychatolic_app/pages/home_screen.dart'; 
 import 'package:mychatolic_app/pages/create_post_screen.dart'; 
-// PERBAIKAN: Ganti ChurchListPage dengan SchedulePage
+// Replaced ChurchListPage with SchedulePage
 import 'package:mychatolic_app/pages/schedule_page.dart'; 
 import 'package:mychatolic_app/pages/consilium/consilium_page.dart';
 import 'package:mychatolic_app/pages/profile_page.dart';
@@ -37,7 +37,7 @@ class _HomePageState extends State<HomePage> {
     if (user != null) {
       final profile = await _supabase.from('profiles').select().eq('id', user.id).maybeSingle();
       if (profile == null) {
-        // Handle missing profile logic if needed
+        // Handle missing profile logic if needed (e.g., redirect to profile setup)
       }
     }
   }
@@ -63,13 +63,14 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // List of pages for the bottom navigation
     final List<Widget> children = [
       HomeScreen(key: _homeScreenKey),
-      const SchedulePage(),     // <--- PERBAIKAN: Halaman Jadwal Baru
-      const RadarPage(),        
-      const ConsiliumPage(),    
-      const SocialInboxPage(),  
-      ProfilePage(key: _profilePageKey),       
+      const SchedulePage(),       // New Schedule Page
+      const RadarPage(),          // Radar Page
+      const ConsiliumPage(),      // Consilium Page
+      const SocialInboxPage(),    // Social Inbox
+      ProfilePage(key: _profilePageKey), // Profile Page
     ];
 
     return Scaffold(
@@ -78,6 +79,7 @@ class _HomePageState extends State<HomePage> {
         index: _currentIndex,
         children: children,
       ),
+      // Floating Action Button logic for Home screen (creating posts)
       floatingActionButton: _currentIndex == 0 
           ? FloatingActionButton(
               heroTag: 'home_fab', 
@@ -87,9 +89,11 @@ class _HomePageState extends State<HomePage> {
                    MaterialPageRoute(builder: (_) => const CreatePostScreen())
                  );
                  
+                 // If a post was created, refresh the HomeScreen feed
                  if (result == true) {
                    _homeScreenKey.currentState?.refreshPosts(); 
                    setState(() {
+                     // Ensure explicit Home index if logic changed unexpectedly, and refresh Profile.
                      _currentIndex = 0;
                      _profilePageKey = UniqueKey(); 
                    });
@@ -101,34 +105,31 @@ class _HomePageState extends State<HomePage> {
           : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Theme.of(context).bottomNavigationBarTheme.backgroundColor ?? Theme.of(context).cardColor, 
+          color: Theme.of(context).cardColor,
           boxShadow: [
-             BoxShadow(
-               color: Theme.of(context).shadowColor.withOpacity(0.1), 
-               blurRadius: 10, 
-               offset: const Offset(0, -4) 
-             )
+            BoxShadow(
+              color: const Color(0xff570088).withOpacity(0.05), // Light purple shadow
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
           ],
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: _onTabTapped,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Theme.of(context).bottomNavigationBarTheme.backgroundColor,
-          elevation: 0,
-          selectedItemColor: Theme.of(context).bottomNavigationBarTheme.selectedItemColor,
-          unselectedItemColor: Theme.of(context).bottomNavigationBarTheme.unselectedItemColor,
-          showSelectedLabels: true,
+          backgroundColor: Theme.of(context).cardColor,
+          selectedItemColor: const Color(0xFFE53935), // Red active color
+          unselectedItemColor: Colors.grey, // Grey inactive color
           showUnselectedLabels: true,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
-          unselectedLabelStyle: const TextStyle(fontSize: 10),
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
           items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Home"),
-            BottomNavigationBarItem(icon: Icon(Icons.calendar_month), label: "Jadwal"),
-            BottomNavigationBarItem(icon: Icon(Icons.radar), label: "Radar"),
-            BottomNavigationBarItem(icon: Icon(Icons.spa), label: "Consilium"),
-            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble), label: "Chat"),
-            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Beranda'),
+            BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Jadwal'),
+            BottomNavigationBarItem(icon: Icon(Icons.radar), label: 'Radar'),
+            BottomNavigationBarItem(icon: Icon(Icons.volunteer_activism), label: 'Consilium'),
+            BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
           ],
         ),
       ),
