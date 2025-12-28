@@ -91,6 +91,7 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'radar_fab',
         onPressed: () async {
           final result = await Navigator.push(
             context,

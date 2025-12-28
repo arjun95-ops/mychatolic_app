@@ -50,13 +50,13 @@ class SocialService {
 
       return UserPost(
         id: postData['id'].toString(),
-        userId: authorId,
+        userId: authorId?.toString() ?? '',
         caption: postData['caption'],
         imageUrl: postData['image_url'],
         type: postData['type'] ?? 'text',
-        createdAt: DateTime.tryParse(postData['created_at'].toString()) ?? DateTime.now(),
-        likesCount: likesCount,
-        commentsCount: commentsCount,
+        createdAt: DateTime.tryParse(postData['created_at']?.toString() ?? '') ?? DateTime.now(),
+        likesCount: (likesCount as num?)?.toInt() ?? 0,
+        commentsCount: (commentsCount as num?)?.toInt() ?? 0,
         isLikedByMe: isLiked,
         author: authorProfile,
       );
@@ -90,28 +90,37 @@ class SocialService {
       final response = await _supabase.rpc('get_posts_with_status', params: params);
       final List<dynamic> data = response as List<dynamic>;
 
-      return data.map((json) {
-         // Correct Mapping based on user request
-         final authorProfile = Profile(
-            id: json['user_id']?.toString() ?? '',
-            fullName: json['author_full_name'] ?? 'Umat', 
-            avatarUrl: json['author_avatar_url'], 
-            role: json['author_role'] ?? 'Umat',
-         );
+      final List<UserPost> validPosts = [];
 
-         return UserPost(
-           id: json['id'].toString(),
-           userId: json['user_id'].toString(),
-           caption: json['caption'],
-           imageUrl: json['image_url'],
-           type: json['type'] ?? 'text',
-           createdAt: DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now(),
-           likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
-           commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
-           isLikedByMe: json['is_liked_by_me'] ?? false, 
-           author: authorProfile,
-         );
-      }).toList();
+      for (var json in data) {
+        try {
+           final authorProfile = Profile(
+              id: json['user_id']?.toString() ?? '',
+              fullName: json['author_full_name'] ?? 'Umat', 
+              avatarUrl: json['author_avatar_url'], 
+              role: json['author_role'] ?? 'Umat',
+           );
+
+           final post = UserPost(
+             id: json['id'].toString(),
+             userId: json['user_id']?.toString() ?? '',
+             caption: json['caption'],
+             imageUrl: json['image_url'],
+             type: json['type'] ?? 'text',
+             createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+             likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
+             commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
+             isLikedByMe: json['is_liked_by_me'] ?? false, 
+             author: authorProfile,
+           );
+           
+           validPosts.add(post);
+        } catch (e) {
+           print("Error parsing post item: $e. Skipping.");
+        }
+      }
+
+      return validPosts;
 
     } catch (e, stackTrace) {
       print("RPC FETCH ERROR: $e");

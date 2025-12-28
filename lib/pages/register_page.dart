@@ -127,10 +127,109 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   Future<void> _submitRegistration() async {
-     // TODO: Implement actual registration logic to Supabase Auth & Profiles table
-     // Remember: Save only country, diocese, parish NAMES (Text) to profiles table.
-     // Do not save IDs if columns are incompatible.
-     _showError("Fitur Registrasi Backend sedang dalam pengembangan.");
+    // 1. Final Validation
+    if (!_validateCurrentStep()) return;
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final name = _nameController.text.trim();
+    final role = _selectedRole?.toLowerCase() ?? 'umat';
+
+    // Show Loading
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator())
+    );
+
+    try {
+      // 2. Sign Up
+      final AuthResponse res = await Supabase.instance.client.auth.signUp(
+        email: email,
+        password: password,
+        data: {
+          'full_name': name,
+          'role': role, // Metadata
+          'is_catechumen': _isCatechumen, // Metadata
+        },
+      );
+      
+      final user = res.user;
+
+      if (user != null) {
+        // 3. Prepare Data for Profiles Table
+        final dbDate = _formatDateForDB(_dobController.text);
+        
+        // Insert Profile Data
+        await Supabase.instance.client.from('profiles').upsert({
+          'id': user.id,
+          'full_name': name,
+          'birth_date': dbDate,
+          'role': role,
+          'ethnicity': _sukuController.text.trim(),
+          'country_id': _selectedCountryId,
+          'diocese_id': _selectedDioceseId,
+          'church_id': _selectedParishId,
+          'is_catechumen': _isCatechumen,
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+
+        // 4. Success
+        if (mounted) {
+           Navigator.pop(context); // Close Loading
+           _showSuccessDialog();
+        }
+      } else {
+         // Should rarely happen unless email confirmation is ON and required strictly before login
+         if (mounted) Navigator.pop(context);
+         _showError("Registrasi berhasil, silakan cek email untuk verifikasi (jika diperlukan).");
+      }
+
+    } on AuthException catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showError(e.message);
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      _showError("Terjadi kesalahan: $e");
+    }
+  }
+  
+  String? _formatDateForDB(String uiDate) {
+    // Input: DD/MM/YYYY -> Output: YYYY-MM-DD
+    try {
+      final parts = uiDate.split('/');
+      if (parts.length != 3) return null;
+      return "${parts[2]}-${parts[1]}-${parts[0]}";
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Registrasi Berhasil"),
+          content: const Text("Selamat bergabung di MyCatholic!"),
+          actions: [
+            TextButton(
+              onPressed: () {
+                 Navigator.pop(context); // Close Dialog
+                 // Navigate to Home
+                 Navigator.pushAndRemoveUntil(
+                   context, 
+                   MaterialPageRoute(builder: (_) => const HomePage()), 
+                   (route) => false
+                 );
+              },
+              child: const Text("Masuk Aplikasi"),
+            )
+          ],
+        );
+      }
+    );
   }
 
   void _showError(String message) {

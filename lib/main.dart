@@ -31,6 +31,8 @@ void main() async {
 }
 
 class MyChatolicApp extends StatelessWidget {
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
   const MyChatolicApp({super.key});
 
   @override
@@ -40,6 +42,7 @@ class MyChatolicApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'MyCatholic',
+      navigatorKey: MyChatolicApp.navigatorKey,
       theme: MyCatholicTheme.lightTheme,  
       darkTheme: MyCatholicTheme.darkTheme, 
       themeMode: themeProvider.themeMode,

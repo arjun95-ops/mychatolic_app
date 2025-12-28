@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/core/theme.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
-import 'package:mychatolic_app/pages/other_user_profile_page.dart';
+import 'package:mychatolic_app/pages/profile_page.dart';
 
 class FriendSearchPage extends StatefulWidget {
   final bool isSelectionMode;
@@ -30,7 +30,7 @@ class _FriendSearchPageState extends State<FriendSearchPage> {
   // Search Results
   List<Map<String, dynamic>> _results = [];
   bool _isLoading = false;
-  final Set<String> _sentRequests = {};
+
 
   // --- HELPERS: CASADING DROPDOWNS (Reusing Logic pattern) ---
   Future<void> _showSearchModal(String table, String? filterCol, String? filterVal, String title, Function(String id, String name) onSelect) async {
@@ -172,74 +172,7 @@ class _FriendSearchPageState extends State<FriendSearchPage> {
     }
   }
 
-  Future<void> _handleFriendRequest(Map<String, dynamic> targetUser) async {
-    final currentUserId = _supabase.auth.currentUser?.id;
-    if (currentUserId == null) return;
 
-    // Show Loading
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Memproses permintaan..."), duration: Duration(milliseconds: 1000), backgroundColor: Colors.blue)
-    );
-
-    try {
-      // 1. Check Existing Request (Sent OR Received)
-      final existing = await _supabase.from('friend_requests')
-        .select()
-        .or('and(sender_id.eq.$currentUserId,receiver_id.eq.${targetUser['id']}),and(sender_id.eq.${targetUser['id']},receiver_id.eq.$currentUserId)')
-        .maybeSingle();
-
-      if (existing != null) {
-        final status = existing['status'];
-        String msg = "";
-        if (status == 'pending') {
-           msg = (existing['sender_id'] == currentUserId) 
-             ? "Permintaan sudah terkirim, menunggu respon."
-             : "Orang ini sudah mengirimkan permintaan kepadamu. Cek notifikasi.";
-        } else if (status == 'accepted') {
-           msg = "Kalian sudah berteman!";
-        } else {
-           msg = "Status hubungan: $status";
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.orange));
-          
-          // If already pending, update UI to reflect that
-          if (status == 'pending') {
-            setState(() {
-              _sentRequests.add(targetUser['id']);
-            });
-          }
-        }
-        return;
-      }
-
-      // 2. Send New Request
-      await _supabase.from('friend_requests').insert({
-        'sender_id': currentUserId,
-        'receiver_id': targetUser['id'],
-        'status': 'pending'
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Ajakan berteman dikirim ke ${targetUser['full_name']}!"), 
-            backgroundColor: Colors.green
-          )
-        );
-        setState(() {
-          _sentRequests.add(targetUser['id']);
-        });
-      }
-
-    } catch (e) {
-      if (mounted) {
-         // Check for duplicate key violates unique constraint manually if needed, usually handled by step 1
-         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal mengirim: $e"), backgroundColor: Colors.red));
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -361,12 +294,9 @@ class _FriendSearchPageState extends State<FriendSearchPage> {
                           final user = _results[i];
                           final isSelf = _supabase.auth.currentUser?.id == user['id'];
                           
-                          // STATE for individual item loading/status is hard in a simple ListView without state separation. 
-                          // For simplicity, we trigger the logic and show global feedback or generic feedback.
-                          // Ideally, extract UserCard into a StatefulWidget.
-                          // For this implementation, we will use a dialog or snackbar flow.
 
-                          final isPending = _sentRequests.contains(user['id']);
+
+
 
                           return ListTile(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -386,28 +316,14 @@ class _FriendSearchPageState extends State<FriendSearchPage> {
                             ),
                             title: Text(user['full_name'] ?? "-", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                             subtitle: Text((user['role'] ?? "Umat").toString().toUpperCase(), style: const TextStyle(color: Color(0xFFFF9F1C), fontSize: 10, fontWeight: FontWeight.bold)),
-                            trailing: widget.isSelectionMode 
-                              ? null 
-                              : isSelf ? null : (isPending 
-                                  ? const IconButton(
-                                      icon: Icon(Icons.hourglass_empty, color: Colors.grey),
-                                      onPressed: null,
-                                    )
-                                  : IconButton(
-                                      icon: const Icon(Icons.person_add_rounded, color: Color(0xFFFF9F1C)),
-                                      onPressed: () => _handleFriendRequest(user),
-                                    )
-                                ),
+                            trailing: null,
                             onTap: () {
                               if (widget.isSelectionMode) {
                                 Navigator.pop(context, user); 
-                              } else if (!isSelf) {
-                                // Optional: Open profile OR trigger add. Let's stick to Add Logic requested.
-                                // If tapping card also triggers add, it might be annoying. 
-                                // Let's open Profile for Tap, and "Add" button for Request.
+                              } else {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => OtherUserProfilePage(userId: user['id'])),
+                                  MaterialPageRoute(builder: (_) => ProfilePage(userId: user['id'], isBackButtonEnabled: true)),
                                 );
                               }
                             },

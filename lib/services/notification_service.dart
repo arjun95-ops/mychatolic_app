@@ -3,6 +3,11 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter/material.dart';
 
+import 'package:mychatolic_app/main.dart';
+import 'package:mychatolic_app/pages/social_chat_detail_page.dart';
+import 'package:mychatolic_app/services/social_service.dart';
+import 'package:mychatolic_app/pages/post_detail_screen.dart';
+
 class NotificationService {
   // Singleton Pattern
   static final NotificationService _instance = NotificationService._internal();
@@ -36,10 +41,47 @@ class NotificationService {
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) async {
-        // Handle notification tap logic here if needed
-        debugPrint("Notification Tapped: ${response.payload}");
+        _handleNotificationTap(response.payload);
       },
     );
+  }
+
+  void _handleNotificationTap(String? payload) async {
+    debugPrint("Notification Tapped: $payload");
+    if (payload == null) return;
+
+    final navigator = MyChatolicApp.navigatorKey.currentState;
+    if (navigator == null) return;
+
+    if (payload.startsWith("chat:")) {
+      // Format: "chat:USER_ID" or "chat:CHAT_ID"
+      // Assuming payload is opponent ID for simplicity based on request
+      final userId = payload.split(":")[1];
+      
+      navigator.push(
+        MaterialPageRoute(
+          builder: (_) => SocialChatDetailPage(
+            chatId: "temp", // Let page handle or find chat
+            opponentProfile: {'id': userId, 'full_name': 'Chat', 'avatar_url': null},
+          ),
+        ),
+      );
+    } else if (payload.startsWith("post:")) {
+      // Format: "post:POST_ID"
+      final postId = payload.split(":")[1];
+      
+      try {
+        // Fetch post data first
+        final post = await SocialService().fetchPostById(postId);
+        if (post != null) {
+          navigator.push(
+            MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)),
+          );
+        }
+      } catch (e) {
+        debugPrint("Error navigating to post: $e");
+      }
+    }
   }
 
   Future<void> scheduleMassReminder(String churchName, String dayName, String timeStr) async {

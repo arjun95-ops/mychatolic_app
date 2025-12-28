@@ -27,9 +27,19 @@ class _LoginPageState extends State<LoginPage> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
+    // 1. Basic Empty Validation
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Email dan Password tidak boleh kosong")),
+        const SnackBar(content: Text("Email dan Password tidak boleh kosong"), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    // 2. Strict Regex Validation
+    final emailRegex = RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
+    if (!emailRegex.hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Format email tidak valid"), backgroundColor: Colors.red),
       );
       return;
     }
@@ -51,19 +61,45 @@ class _LoginPageState extends State<LoginPage> {
         }
       }
     } on AuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+      if (!mounted) return;
+      
+      String message = e.message;
+      // Humanize Supabase Auth Errors
+      if (message.toLowerCase().contains("invalid login credentials")) {
+        message = "Email atau kata sandi salah.";
+      } else if (message.toLowerCase().contains("email not confirmed")) {
+        message = "Email belum diverifikasi. Cek inbox Anda.";
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } on Exception catch (e) {
+      if (!mounted) return;
+
+      String message = "Terjadi kesalahan sistem.";
+      final errorStr = e.toString().toLowerCase();
+      
+      if (errorStr.contains("socketexception") || errorStr.contains("network")) {
+        message = "Periksa koneksi internet Anda.";
+      } else if (errorStr.contains("timeout")) {
+        message = "Koneksi waktu habis. Coba lagi.";
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Terjadi kesalahan: $e"),
+            content: Text("Gagal login: ${e.toString()}"),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );

@@ -25,15 +25,22 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
   final _supabase = Supabase.instance.client;
   final StoryService _storyService = StoryService();
 
+  // State untuk Stories
   List<UserStoryGroup> _activeStories = [];
   UserStoryGroup? _currentUserStory;
   bool _isLoadingStories = true;
+
+  // State untuk Chat & Cache Profile
+  Map<String, Map<String, dynamic>> _profileCache = {};
+  bool _isFetchingProfiles = false;
 
   @override
   void initState() {
     super.initState();
     _fetchStories();
   }
+
+  // --- STORY LOGIC ---
 
   Future<void> _fetchStories() async {
     if (!mounted) return;
@@ -63,9 +70,35 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
     }
   }
 
-  /// Handles refreshing data after returning from pages
   void _onReturn() {
     _fetchStories();
+  }
+
+  // --- CHAT & CACHE LOGIC ---
+
+  Future<void> _cacheProfiles(List<String> ids) async {
+    // Filter ID yang belum ada di cache dan belum null
+    final idsToFetch = ids.where((id) => !_profileCache.containsKey(id)).toSet().toList();
+    
+    if (idsToFetch.isEmpty) return;
+
+    try {
+      // Menggunakan .filter('id', 'in', ids) sebagai pengganti .in_()
+      final List<dynamic> data = await _supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .filter('id', 'in', idsToFetch);
+
+      if (mounted) {
+        setState(() {
+          for (var item in data) {
+            _profileCache[item['id']] = item as Map<String, dynamic>;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Error caching profiles: $e");
+    }
   }
 
   @override
@@ -85,12 +118,9 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
       ),
       body: Column(
         children: [
-          // 1. STORY HEADER (Top Tray)
+          // 1. STORY HEADER
           _buildStoryHeader(),
           
-          // No visual divider here as requested for cleaner look, 
-          // or a very subtle one if absolutely needed, but user asked for "clean".
-          // Adding a very subtle one just to separate sections without being intrusive.
           Container(height: 1, color: Colors.grey.shade100),
 
           // 2. CHAT BODY (List)
@@ -105,12 +135,12 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
   // ---------------------------------------------------------------------------
   Widget _buildStoryHeader() {
     return Container(
-      height: 130.0, // STRICT: 130.0
+      height: 130.0,
       width: double.infinity,
       color: Colors.white,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), // STRICT: symmetric(horizontal: 16, vertical: 10)
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         itemCount: 1 + _activeStories.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
@@ -128,110 +158,83 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
     final user = _supabase.auth.currentUser;
     final hasStory = _currentUserStory != null && _currentUserStory!.stories.isNotEmpty;
 
-    return FutureBuilder(
-      future: hasStory ? null : _supabase.from('profiles').select('avatar_url').eq('id', user!.id).single(),
-      builder: (context, snapshot) {
-        String? avatarUrl;
-        if (hasStory) {
-          avatarUrl = _currentUserStory!.userAvatar;
-        } else if (snapshot.hasData) {
-          avatarUrl = (snapshot.data as Map)['avatar_url'];
-        }
+    // Jika user belum login, return placeholder
+    if (user == null) return const SizedBox.shrink();
 
-        return GestureDetector(
-          onTap: () {
-            if (hasStory) {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => StoryViewPage(
-                stories: _currentUserStory!.stories,
-                userProfile: {
-                  'full_name': 'Saya', 
-                  'avatar_url': avatarUrl
-                },
-              ))).then((_) => _onReturn());
-            } else {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateStoryPage()))
-                  .then((result) { if (result == true) _onReturn(); });
-            }
-          },
-          onLongPress: () {
-             // Hidden feature for power user: Add Story even if has active story
-             Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateStoryPage()))
-                  .then((result) { if (result == true) _onReturn(); });
-          },
-          child: Container(
-            width: 80.0, // STRICT: 80.0
-            color: Colors.transparent,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Avatar Area (STRICT: 70x70)
-                SizedBox(
-                  width: 70, height: 70,
-                  child: Stack(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: hasStory 
-                              ? const LinearGradient(
-                                  colors: [Colors.purple, Colors.orange],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                )
-                              : null,
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle, 
-                            color: Colors.white
-                          ),
-                          child: SafeNetworkImage(
-                            imageUrl: avatarUrl,
-                            width: 60, height: 60,
-                            borderRadius: BorderRadius.circular(100),
-                            fit: BoxFit.cover,
-                            fallbackIcon: Icons.person,
-                          ),
-                        ),
+    // Cek cache untuk avatar saya sendiri jika belum ada di story
+    final myProfile = _profileCache[user.id];
+    String? avatarUrl = hasStory ? _currentUserStory!.userAvatar : myProfile?['avatar_url'];
+
+    // Jika belum ada di cache, fetch (optional lazy load)
+    if (!hasStory && myProfile == null) {
+       _cacheProfiles([user.id]);
+    }
+
+    return GestureDetector(
+      onTap: () {
+        if (hasStory) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => StoryViewPage(
+            stories: _currentUserStory!.stories,
+            userProfile: {
+              'full_name': 'Saya', 
+              'avatar_url': avatarUrl
+            },
+          ))).then((_) => _onReturn());
+        } else {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateStoryPage()))
+              .then((result) { if (result == true) _onReturn(); });
+        }
+      },
+      child: Container(
+        width: 80.0,
+        color: Colors.transparent,
+        child: Column(
+          children: [
+            SizedBox(
+              width: 70, height: 70,
+              child: Stack(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: hasStory 
+                          ? const LinearGradient(colors: [Colors.purple, Colors.orange])
+                          : null,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                      child: SafeNetworkImage(
+                        imageUrl: avatarUrl,
+                        width: 60, height: 60,
+                        borderRadius: BorderRadius.circular(100),
+                        fit: BoxFit.cover,
+                        fallbackIcon: Icons.person,
                       ),
-            
-                      // "+" Badge (Logic Refined: Only if NO story)
-                      if (!hasStory)
-                        Positioned(
-                          bottom: 0, 
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Colors.blueAccent, // Vibrant Blue
-                              shape: BoxShape.circle,
-                              border: Border.fromBorderSide(BorderSide(color: Colors.white, width: 2.5)),
-                            ),
-                            child: const Icon(Icons.add, size: 16, color: Colors.white),
-                          ),
-                        ),
-                    ],
+                    ),
                   ),
-                ),
-                
-                const SizedBox(height: 6), // STRICT: 6.0
-                
-                // Text Label (STRICT: 12.0)
-                Text(
-                  "Cerita Anda",
-                  style: GoogleFonts.outfit(fontSize: 12.0, color: Colors.black87),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                  if (!hasStory)
+                    Positioned(
+                      bottom: 0, right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.blueAccent,
+                          shape: BoxShape.circle,
+                          border: Border.fromBorderSide(BorderSide(color: Colors.white, width: 2.5)),
+                        ),
+                        child: const Icon(Icons.add, size: 16, color: Colors.white),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        );
-      }
+            const SizedBox(height: 6),
+            Text("Cerita Anda", style: GoogleFonts.outfit(fontSize: 12.0), maxLines: 1),
+          ],
+        ),
+      ),
     );
   }
 
@@ -240,59 +243,32 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
       onTap: () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => StoryViewPage(
            stories: group.stories,
-           userProfile: {
-             'full_name': group.userName,
-             'avatar_url': group.userAvatar,
-           },
+           userProfile: {'full_name': group.userName, 'avatar_url': group.userAvatar},
         ))).then((_) => _onReturn());
       },
       child: Container(
-        width: 80.0, // STRICT: 80.0
-        color: Colors.transparent,
+        width: 80.0,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            // Avatar Area (STRICT: 70x70)
-            SizedBox(
-              width: 70, height: 70,
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(colors: [Colors.purple, Colors.orange, Colors.greenAccent]),
+              ),
               child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [Colors.purple, Colors.orange, Colors.greenAccent],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle, 
-                    color: Colors.white
-                  ),
-                  child: SafeNetworkImage(
-                    imageUrl: group.userAvatar,
-                    width: 60, height: 60,
-                    borderRadius: BorderRadius.circular(100),
-                    fit: BoxFit.cover,
-                    fallbackIcon: Icons.person,
-                  ),
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                child: SafeNetworkImage(
+                  imageUrl: group.userAvatar,
+                  width: 60, height: 60,
+                  borderRadius: BorderRadius.circular(100),
+                  fit: BoxFit.cover,
                 ),
               ),
             ),
-            
-            const SizedBox(height: 6), // STRICT: 6.0
-            
-            // Text Label (STRICT: 12.0)
-            Text(
-              group.userName.split(' ').first, 
-              style: GoogleFonts.outfit(fontSize: 12.0, color: Colors.black87),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            const SizedBox(height: 6),
+            Text(group.userName.split(' ').first, style: GoogleFonts.outfit(fontSize: 12.0), maxLines: 1),
           ],
         ),
       ),
@@ -300,13 +276,11 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
   }
 
   // ---------------------------------------------------------------------------
-  // UI: CHAT LIST
+  // UI: CHAT LIST (OPTIMIZED)
   // ---------------------------------------------------------------------------
   Widget _buildChatList() {
     final myId = _supabase.auth.currentUser?.id;
-    if (myId == null) {
-      return const Center(child: Text("Silakan login kembali."));
-    }
+    if (myId == null) return const Center(child: Text("Silakan login kembali."));
 
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _supabase
@@ -326,7 +300,6 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
         }
         
         final chats = snapshot.data ?? [];
-        
         if (chats.isEmpty) {
           return Center(
              child: Column(
@@ -340,7 +313,22 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
           );
         }
 
-        // STRICT: ListView.builder (NO Dividers)
+        // --- COLLECT MISSING PROFILES ---
+        List<String> missingIds = [];
+        for (var chat in chats) {
+          final participants = List<dynamic>.from(chat['participants'] ?? []);
+          final opponentId = participants.firstWhere((id) => id != myId, orElse: () => null);
+          if (opponentId != null && !_profileCache.containsKey(opponentId)) {
+            missingIds.add(opponentId.toString());
+          }
+        }
+        
+        // Trigger batch fetch jika ada yang hilang
+        if (missingIds.isNotEmpty) {
+           // Gunakan Future.microtask agar tidak error setState saat build
+           Future.microtask(() => _cacheProfiles(missingIds));
+        }
+
         return ListView.builder(
           itemCount: chats.length,
           itemBuilder: (context, index) {
@@ -353,70 +341,61 @@ class _SocialInboxPageState extends State<SocialInboxPage> {
   }
 
   Widget _buildChatItem(Map<String, dynamic> chat, String myId) {
-    // Logic to find opponent
     final participants = List<dynamic>.from(chat['participants'] ?? []);
-    
-    // Safety check: if participants list is invalid or empty
-    if (participants.isEmpty) return const SizedBox.shrink();
-
-    // Find the ID that is NOT me
-    final opponentId = participants.firstWhere(
-      (id) => id != myId, 
-      orElse: () => null
-    );
+    final opponentId = participants.firstWhere((id) => id != myId, orElse: () => null);
 
     if (opponentId == null) return const SizedBox.shrink();
 
-    return FutureBuilder(
-      future: _supabase.from('profiles').select().eq('id', opponentId).maybeSingle(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-           return const SizedBox(height: 70); 
-        }
+    // BACA DARI CACHE (Synchronous)
+    final profile = _profileCache[opponentId];
+    
+    // Tampilan Loading Sementara (Shimmer-like) jika data belum siap
+    if (profile == null) {
+      return ListTile(
+        leading: const CircleAvatar(backgroundColor: Colors.grey),
+        title: Container(width: 100, height: 16, color: Colors.grey[200]),
+        subtitle: Container(width: 200, height: 12, color: Colors.grey[100]),
+      );
+    }
 
-        final profile = snapshot.data as Map<String, dynamic>;
-        final name = profile['full_name'] ?? "User";
-        final avatarUrl = profile['avatar_url'];
-        
-        final lastMsg = chat['last_message'] ?? "Memulai percakapan";
-        final updatedAt = chat['updated_at'];
-        
-        // STRICT: No Bottom Border
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          leading: SafeNetworkImage(
-            imageUrl: avatarUrl,
-            width: 50, height: 50,
-            borderRadius: BorderRadius.circular(25),
-            fit: BoxFit.cover,
-            fallbackIcon: Icons.person,
-          ),
-          title: Text(
-            name, 
-            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
-            maxLines: 1, overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            lastMsg,
-            style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14),
-            maxLines: 1, overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Text(
-             updatedAt != null ? timeago.format(DateTime.parse(updatedAt), locale: 'en_short') : "",
-             style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12),
-          ),
-          onTap: () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => SocialChatDetailPage(
-              chatId: chat['id'],
-              opponentProfile: {
-                'id': opponentId,
-                'full_name': name,
-                'avatar_url': avatarUrl,
-              },
-            )));
+    final name = profile['full_name'] ?? "User";
+    final avatarUrl = profile['avatar_url'];
+    final lastMsg = chat['last_message'] ?? "Memulai percakapan";
+    final updatedAt = chat['updated_at'];
+    
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      leading: SafeNetworkImage(
+        imageUrl: avatarUrl,
+        width: 50, height: 50,
+        borderRadius: BorderRadius.circular(25),
+        fit: BoxFit.cover,
+        fallbackIcon: Icons.person,
+      ),
+      title: Text(
+        name, 
+        style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+        maxLines: 1, overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        lastMsg,
+        style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14),
+        maxLines: 1, overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Text(
+         updatedAt != null ? timeago.format(DateTime.parse(updatedAt), locale: 'en_short') : "",
+         style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12),
+      ),
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => SocialChatDetailPage(
+          chatId: chat['id'],
+          opponentProfile: {
+            'id': opponentId,
+            'full_name': name,
+            'avatar_url': avatarUrl,
           },
-        );
-      }
+        )));
+      },
     );
   }
 }

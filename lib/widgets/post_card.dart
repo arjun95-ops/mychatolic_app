@@ -9,13 +9,14 @@ import 'package:mychatolic_app/models/user_post.dart';
 import 'package:mychatolic_app/services/social_service.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
 import 'package:mychatolic_app/pages/post_detail_screen.dart';
-import 'package:mychatolic_app/pages/other_user_profile_page.dart';
+// PERBAIKAN: Import ProfilePage yang benar
+import 'package:mychatolic_app/pages/profile_page.dart'; 
 import 'package:mychatolic_app/pages/edit_post_page.dart';
 
 class PostCard extends StatefulWidget {
   final UserPost post;
   final SocialService socialService; 
-  final VoidCallback? onTap; // Null means default navigation behavior
+  final VoidCallback? onTap; 
   final Function(UserPost)? onPostUpdated;
   final String? heroTagPrefix;
 
@@ -41,23 +42,17 @@ class _PostCardState extends State<PostCard> {
   @override
   void initState() {
     super.initState();
-    // 1. Initial State from Widget
     likesCount = widget.post.likesCount;
     isLiked = widget.post.isLikedByMe;
     commentsCount = widget.post.commentsCount;
     
-    // 2. Subscribe to Global Broadcast Stream
     _postSubscription = SocialService.postUpdateStream.listen((updatedPost) {
       if (!mounted) return;
-      
-      // If this event matches OUR post ID, update local state
       if (updatedPost.id == widget.post.id) {
          setState(() {
            likesCount = updatedPost.likesCount;
            isLiked = updatedPost.isLikedByMe;
            commentsCount = updatedPost.commentsCount;
-           // IMPORTANT: We do NOT update author/image here to prevent flickering or data loss 
-           // if the broadcast payload is incomplete.
          });
       }
     });
@@ -73,22 +68,18 @@ class _PostCardState extends State<PostCard> {
     if (widget.onTap != null) {
       widget.onTap!(); 
     } else {
-      // 1. Construct updated post from LOCAL state
       final localPost = widget.post.copyWith(
         likesCount: likesCount,
         isLikedByMe: isLiked,
         commentsCount: commentsCount
       );
 
-      // 2. Navigate and wait for result
       final result = await Navigator.push(
         context, 
         MaterialPageRoute(builder: (_) => PostDetailScreen(post: localPost))
       );
       
-      // 3. Sync Back BROADCAST on Return (if Detail screen returned data)
       if (result is UserPost && mounted) {
-           // Broadcast to ensure all views (Feed, Profile, etc.) are in sync with what happened in Detail
            SocialService.broadcastPostUpdate(result);
       }
     }
@@ -98,31 +89,24 @@ class _PostCardState extends State<PostCard> {
     final newLiked = !isLiked;
     final newCount = likesCount + (newLiked ? 1 : -1);
 
-    // 1. Optimistic Update Local State
     setState(() {
       isLiked = newLiked;
       likesCount = newCount;
     });
     
-    // 2. Create Updated Object
     final updatedPost = widget.post.copyWith(
        isLikedByMe: newLiked,
        likesCount: newCount,
        commentsCount: commentsCount
     );
 
-    // 3. BROADCAST IMMEDIATELY (Instantly updates other screens)
     SocialService.broadcastPostUpdate(updatedPost);
-    
-    // 4. Notify Parent (Callback) - Legacy/Direct parent usage
     widget.onPostUpdated?.call(updatedPost);
     
-    // 5. Server Request
     try {
       await widget.socialService.toggleLike(widget.post.id);
     } catch (e) {
       if (mounted) {
-        // Revert on Failure
         final revertedLocked = !isLiked;
         final revertedCount = likesCount + (revertedLocked ? 1 : -1);
         
@@ -131,7 +115,6 @@ class _PostCardState extends State<PostCard> {
            likesCount = revertedCount;
         });
         
-        // Revert Broadcast
         SocialService.broadcastPostUpdate(widget.post.copyWith(
            isLikedByMe: revertedLocked,
            likesCount: revertedCount,
@@ -172,14 +155,13 @@ class _PostCardState extends State<PostCard> {
                   title: const Text('Edit Post'),
                   onTap: () async {
                     Navigator.pop(context);
-                    // Edit Flow
                     final result = await Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => EditPostPage(post: widget.post)),
                     );
                     
                     if (result is UserPost && context.mounted) {
-                       SocialService.broadcastPostUpdate(result); // Broadcast Edit
+                       SocialService.broadcastPostUpdate(result);
                        widget.onPostUpdated?.call(result); 
                        
                        ScaffoldMessenger.of(context).showSnackBar(
@@ -276,7 +258,7 @@ class _PostCardState extends State<PostCard> {
               children: reasons.map((r) => ListTile(
                 title: Text(r),
                 onTap: () {
-                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); 
                   _submitReport(r);
                 },
               )).toList(),
@@ -339,7 +321,11 @@ class _PostCardState extends State<PostCard> {
                     Navigator.push(
                       context, 
                       MaterialPageRoute(
-                        builder: (_) => OtherUserProfilePage(userId: author.id)
+                        // PERBAIKAN: Gunakan ProfilePage
+                        builder: (_) => ProfilePage(
+                          userId: author.id,
+                          isBackButtonEnabled: true, 
+                        )
                       )
                     );
                   }
@@ -350,7 +336,7 @@ class _PostCardState extends State<PostCard> {
                        width: 40, height: 40,
                        decoration: const BoxDecoration(shape: BoxShape.circle),
                        child: SafeNetworkImage(
-                         imageUrl: author?.avatarUrl, // CORRECTED TO USE AVATAR URL
+                         imageUrl: author?.avatarUrl,
                          width: 40, height: 40,
                          borderRadius: BorderRadius.circular(20),
                          fit: BoxFit.cover,
@@ -392,7 +378,7 @@ class _PostCardState extends State<PostCard> {
              
              const SizedBox(height: 12),
  
-             // Image with Hero
+             // Image
              if (widget.post.imageUrl != null && widget.post.imageUrl!.isNotEmpty)
                 GestureDetector(
                   onTap: _handleMainTap, 
@@ -422,7 +408,6 @@ class _PostCardState extends State<PostCard> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  // Like (Independent Action)
                   GestureDetector(
                     onTap: _handleLike,
                     child: Row(
@@ -439,7 +424,6 @@ class _PostCardState extends State<PostCard> {
                   ),
                   const SizedBox(width: 24),
                   
-                  // Comment (Triggers Navigation)
                   GestureDetector(
                     onTap: _handleMainTap, 
                     child: Row(
@@ -453,7 +437,6 @@ class _PostCardState extends State<PostCard> {
                   
                   const Spacer(),
 
-                  // Share (Independent Action)
                   GestureDetector(
                     onTap: _handleShare, 
                     child: const Icon(Icons.share_outlined, color: kTextMeta, size: 22),

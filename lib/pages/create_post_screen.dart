@@ -1,9 +1,11 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart' as path_provider;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mychatolic_app/core/theme.dart';
 import 'package:mychatolic_app/services/social_service.dart';
 
@@ -22,11 +24,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final ImagePicker _picker = ImagePicker();
   
   bool _isSending = false;
+  String _statusMessage = "Kirim"; // Untuk feedback visual (Mengompresi/Mengirim)
   
-  // Location Stubs (In real app, fetch from user profile)
+  // Location Stubs
   String? _countryId; 
   String? _dioceseId;
   String? _churchId;
+  String? _locationName; // Untuk display di Chip
 
   @override
   void initState() {
@@ -40,19 +44,24 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
        try {
           final data = await Supabase.instance.client
               .from('profiles')
-              .select('country_id, diocese_id, church_id')
+              .select('country_id, diocese_id, church_id, churches(name)')
               .eq('id', user.id)
               .maybeSingle();
+          
           if (data != null && mounted) {
              setState(() {
-               // Safe parsing for UUIDs
                _countryId = data['country_id']?.toString();
                _dioceseId = data['diocese_id']?.toString();
                _churchId = data['church_id']?.toString();
+               
+               // Ambil nama gereja untuk display
+               if (data['churches'] != null) {
+                 _locationName = data['churches']['name'];
+               }
              });
           }
        } catch (e) {
-         // ignore
+         // ignore silent error
        }
     }
   }
@@ -70,6 +79,39 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     }
   }
 
+  // LOGIKA KOMPRESI PINTAR
+  Future<File> _processImage(File file) async {
+    setState(() => _statusMessage = "Mengompresi...");
+    
+    // 1. Cek Settingan User
+    final prefs = await SharedPreferences.getInstance();
+    final bool isHighQuality = prefs.getBool('high_quality_upload') ?? false;
+
+    // 2. Tentukan Target (HD vs Hemat)
+    // HD: Min 2048px, Quality 88%
+    // Hemat: Min 1920px, Quality 70%
+    final int minWidth = isHighQuality ? 2048 : 1920;
+    final int quality = isHighQuality ? 88 : 70;
+
+    try {
+      final dir = await path_provider.getTemporaryDirectory();
+      final targetPath = "${dir.absolute.path}/temp_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      
+      final result = await FlutterImageCompress.compressAndGetFile(
+        file.absolute.path,
+        targetPath,
+        minWidth: minWidth,
+        minHeight: minWidth, // Ratio tetap terjaga, ini hanya batas bound
+        quality: quality,
+      );
+
+      return result != null ? File(result.path) : file;
+    } catch (e) {
+      debugPrint("Gagal kompresi, pakai file asli: $e");
+      return file;
+    }
+  }
+
   Future<void> _sendPost() async {
     final content = _contentController.text.trim();
     if (content.isEmpty && _imageFile == null) {
@@ -77,20 +119,27 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
        return;
     }
 
-    setState(() => _isSending = true);
+    setState(() {
+      _isSending = true;
+      _statusMessage = "Memproses...";
+    });
 
     try {
       String? imageUrl;
       
-      // 1. Upload Image First
+      // 1. Upload Image (With Smart Compression)
       if (_imageFile != null) {
-         imageUrl = await _socialService.uploadPostImage(_imageFile!);
+         final File readyFile = await _processImage(_imageFile!);
+         
+         setState(() => _statusMessage = "Mengupload...");
+         imageUrl = await _socialService.uploadPostImage(readyFile);
       }
 
       // 2. Create Post
+      setState(() => _statusMessage = "Posting...");
       await _socialService.createPost(
         content: content,
-        imageUrl: imageUrl, // Pass URL, not file
+        imageUrl: imageUrl, 
         type: _imageFile != null ? 'photo' : 'text',
         countryId: _countryId,
         dioceseId: _dioceseId,
@@ -103,7 +152,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal mengirim: $e")));
-        setState(() => _isSending = false);
+        setState(() {
+          _isSending = false;
+          _statusMessage = "Kirim";
+        });
       }
     }
   }
@@ -128,7 +180,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 elevation: 0,
               ),
               child: _isSending 
-                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                   ? Row(
+                       children: [
+                         const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                         const SizedBox(width: 8),
+                         Text(_statusMessage, style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold)),
+                       ],
+                     )
                    : Text("Kirim", style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: Colors.white)),
             ),
           )
@@ -139,9 +197,27 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
          child: Column(
            crossAxisAlignment: CrossAxisAlignment.start,
            children: [
-             // User Header Info (Optional, but nice)
-             
-             // Input Field
+             // USER LOCATION CHIP
+             if (_locationName != null)
+               Padding(
+                 padding: const EdgeInsets.only(bottom: 12),
+                 child: Chip(
+                   avatar: const Icon(Icons.location_on, size: 16, color: Colors.white),
+                   label: Text(_locationName!, style: GoogleFonts.outfit(color: Colors.white, fontSize: 12)),
+                   backgroundColor: kPrimary.withOpacity(0.8),
+                   deleteIcon: const Icon(Icons.close, size: 14, color: Colors.white),
+                   onDeleted: () {
+                     setState(() {
+                       _churchId = null;
+                       _dioceseId = null;
+                       _countryId = null;
+                       _locationName = null;
+                     });
+                   },
+                 ),
+               ),
+
+             // INPUT TEXT
              TextField(
                controller: _contentController,
                maxLines: 5,
@@ -156,7 +232,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
              
              const SizedBox(height: 20),
              
-             // Image Preview
+             // IMAGE PREVIEW
              if (_imageFile != null)
                 Stack(
                   children: [
@@ -180,7 +256,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
            ],
          ),
       ),
-      // Sticky Bottom Bar for Actions
       bottomNavigationBar: Container(
          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
          decoration: BoxDecoration(
@@ -196,7 +271,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                  onPressed: _pickImage,
                  icon: const Icon(Icons.image_outlined, color: kPrimary, size: 28),
                ),
-               // Add more like camera, tag, etc if needed
              ],
            ),
          ),

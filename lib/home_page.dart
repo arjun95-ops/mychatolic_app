@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Pages
 import 'package:mychatolic_app/pages/home_screen.dart'; 
-import 'package:mychatolic_app/pages/create_post_screen.dart'; // NEW
+import 'package:mychatolic_app/pages/create_post_screen.dart'; 
 import 'package:mychatolic_app/pages/church_list_page.dart'; 
 import 'package:mychatolic_app/pages/consilium/consilium_page.dart';
 import 'package:mychatolic_app/pages/profile_page.dart';
@@ -11,7 +11,6 @@ import 'package:mychatolic_app/pages/radar_page.dart';
 import 'package:mychatolic_app/core/app_colors.dart';
 import 'package:mychatolic_app/pages/social_inbox_page.dart';
 
-// Placeholder for Chat (since Consilium handles real chat, this might be a generic inbox later)
 class ChatPlaceholderPage extends StatelessWidget {
   const ChatPlaceholderPage({super.key});
   @override
@@ -33,7 +32,6 @@ class _HomePageState extends State<HomePage> {
   final _supabase = Supabase.instance.client;
   int _currentIndex = 0;
 
-  // GlobalKey to access HomeScreen state from here
   final GlobalKey<HomeScreenState> _homeScreenKey = GlobalKey<HomeScreenState>();
   Key _profilePageKey = UniqueKey();
 
@@ -47,10 +45,9 @@ class _HomePageState extends State<HomePage> {
   void _checkUserProfile() async {
     final user = _supabase.auth.currentUser;
     if (user != null) {
-      // Logic preserved
       final profile = await _supabase.from('profiles').select().eq('id', user.id).maybeSingle();
       if (profile == null) {
-        // Handle missing profile if needed
+        // Handle missing profile
       }
     }
   }
@@ -76,9 +73,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic children list
     final List<Widget> children = [
-      HomeScreen(key: _homeScreenKey), // Use GlobalKey
+      HomeScreen(key: _homeScreenKey),
       const ChurchListPage(),    
       const RadarPage(),        
       const ConsiliumPage(),    
@@ -92,21 +88,20 @@ class _HomePageState extends State<HomePage> {
         index: _currentIndex,
         children: children,
       ),
-      // FAB ONLY ON HOME TAB
       floatingActionButton: _currentIndex == 0 
           ? FloatingActionButton(
+              heroTag: 'home_fab', // <--- PERBAIKAN DI SINI (Tag Unik)
               onPressed: () async {
                  final result = await Navigator.push(
                    context, 
                    MaterialPageRoute(builder: (_) => const CreatePostScreen())
                  );
                  
-                 // Refresh Home nicely without flickering
                  if (result == true) {
-                   _homeScreenKey.currentState?.refreshPosts(); // Call public method
+                   _homeScreenKey.currentState?.refreshPosts(); 
                    setState(() {
                      _currentIndex = 0;
-                     _profilePageKey = UniqueKey(); // Keep Profile refresh as is
+                     _profilePageKey = UniqueKey(); 
                    });
                  }
               },
@@ -135,38 +130,18 @@ class _HomePageState extends State<HomePage> {
           unselectedItemColor: Theme.of(context).bottomNavigationBarTheme.unselectedItemColor,
           showSelectedLabels: true,
           showUnselectedLabels: true,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10), // Reduced size slightly for 6 items
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
           unselectedLabelStyle: const TextStyle(fontSize: 10),
           items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_filled),
-              label: "Home",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_month),
-              label: "Jadwal",
-            ),
-            // NEW RADAR ITEM
-            BottomNavigationBarItem(
-              icon: Icon(Icons.radar), 
-              label: "Radar",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.spa),
-              label: "Consilium",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble), 
-              label: "Chat",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person),
-              label: "Profil",
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Home"),
+            BottomNavigationBarItem(icon: Icon(Icons.calendar_month), label: "Jadwal"),
+            BottomNavigationBarItem(icon: Icon(Icons.radar), label: "Radar"),
+            BottomNavigationBarItem(icon: Icon(Icons.spa), label: "Consilium"),
+            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble), label: "Chat"),
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profil"),
           ],
         ),
       ),
     );
   }
 }
-

@@ -1,14 +1,16 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/models/user_post.dart';
 import 'package:mychatolic_app/pages/notification_screen.dart';
 import 'package:mychatolic_app/pages/post_detail_screen.dart';
-import 'package:mychatolic_app/services/supabase_service.dart';
 import 'package:mychatolic_app/services/social_service.dart';
-import 'package:mychatolic_app/services/master_data_service.dart'; // Import
+import 'package:mychatolic_app/services/master_data_service.dart';
 import 'package:mychatolic_app/widgets/post_card.dart';
 import 'package:mychatolic_app/widgets/my_catholic_app_bar.dart';
+// PERBAIKAN: Import yang benar (tanpa /pages/)
+import 'package:mychatolic_app/edit_profile_page.dart'; 
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,10 +20,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMixin {
-  final SupabaseService _supabaseService = SupabaseService();
   final SocialService _socialService = SocialService();
-  final MasterDataService _masterService = MasterDataService(); // Init
-  final SupabaseClient _supabase = Supabase.instance.client;
   final ScrollController _scrollController = ScrollController();
 
   // Filter State
@@ -39,7 +38,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
   String? _error;
   
   @override
-  bool get wantKeepAlive => true; // Prevent rebuild/refetch on tab switch or back
+  bool get wantKeepAlive => true; 
 
   @override
   void initState() {
@@ -64,23 +63,25 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
     }
   }
 
-  // Initial Load / Refresh
-  Future<void> refreshPosts() async {
-    // Only clear list if it's a manual refresh (pull-to-refresh or filter change), 
-    // NOT on initial load if we already have data (though initState handles logic).
-    // Here we can simply set loading state.
-    
-    if(mounted) setState(() {
+  Future<void> refreshPosts({bool clearList = false}) async {
+    if (!mounted) return;
+
+    setState(() {
       _isLoading = true;
       _error = null;
       _currentPage = 0;
       _hasNextPage = true;
-      // Do NOT clear _posts immediately to avoid empty screen flash if simply refreshing
-      // But for pagination consistency on refresh, we usually valid.
+      
+      if (clearList) {
+        _posts = [];
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(0);
+        }
+      }
     });
     
     try {
-      final posts = await _socialService.fetchPosts( // Use SocialService
+      final posts = await _socialService.fetchPosts(
         filterType: _filterType,
         filterId: _filterId?.toString(),
         page: _currentPage,
@@ -105,7 +106,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
     }
   }
 
-  // Load More (Pagination)
   Future<void> _loadMorePosts() async {
     if (_isLoadMoreRunning || !_hasNextPage) return;
 
@@ -115,7 +115,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
 
     try {
       final nextPage = _currentPage + 1;
-      final posts = await _socialService.fetchPosts( // Use SocialService
+      final posts = await _socialService.fetchPosts(
         filterType: _filterType,
         filterId: _filterId?.toString(),
         page: nextPage,
@@ -144,7 +144,6 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
     }
   }
 
-  // --- SMART FILTER LOGIC ---
   void _showFilterModal() {
     showModalBottomSheet(
       context: context,
@@ -158,7 +157,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
              _filterId = id;
            });
            Navigator.pop(context);
-           refreshPosts();
+           refreshPosts(clearList: true);
         },
       )
     );
@@ -166,7 +165,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // REQUIRED for KeepAlive
+    super.build(context);
     
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -187,7 +186,7 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
       ),
       body: Column(
         children: [
-          // 1. SMART FILTER DROPDOWN
+          // SMART FILTER DROPDOWN
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: GestureDetector(
@@ -219,16 +218,16 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
             ),
           ),
           
-          // 2. FEED
+          // FEED
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
               : (_error != null)
                   ? Center(child: Text("Error: $_error", style: GoogleFonts.outfit(color: Colors.red)))
                   : (_posts.isEmpty)
-                      ? Center(child: Text("Belum ada postingan.", style: GoogleFonts.outfit(color: metaColor)))
+                      ? _buildEmptyState(metaColor)
                       : RefreshIndicator(
-                          onRefresh: refreshPosts,
+                          onRefresh: () => refreshPosts(clearList: false),
                           child: ListView.separated(
                             controller: _scrollController,
                             padding: const EdgeInsets.only(bottom: 80),
@@ -241,12 +240,10 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
                                   child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
                                 );
                               }
-
                               final post = _posts[index];
-                              // Use the new reusable PostCard
                               return PostCard(
                                 post: post, 
-                                socialService: _socialService, // Pass SocialService
+                                socialService: _socialService, 
                                 onTap: () {
                                    Navigator.push(context, MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)));
                                 },
@@ -265,6 +262,23 @@ class HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMix
       ),
     );
   }
+
+  Widget _buildEmptyState(Color color) {
+    String msg = "Belum ada postingan.";
+    if (_filterType != null) {
+      msg = "Belum ada postingan di lokasi ini.\nJadilah yang pertama!";
+    }
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.feed_outlined, size: 48, color: color.withOpacity(0.5)),
+          const SizedBox(height: 12),
+          Text(msg, textAlign: TextAlign.center, style: GoogleFonts.outfit(color: color, fontSize: 14)),
+        ],
+      )
+    );
+  }
 }
 
 // --- SEARCH FILTER SHEET ---
@@ -280,19 +294,29 @@ class _FilterSearchSheet extends StatefulWidget {
 class _FilterSearchSheetState extends State<_FilterSearchSheet> {
   final _searchController = TextEditingController();
   final MasterDataService _masterService = MasterDataService();
+  
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearching = false;
-  
-  // Quick Options State
-  int? _myCountryId;
-  int? _myDioceseId;
+  Timer? _debounce;
+
+  // UUID String State
+  String? _myCountryId;
+  String? _myDioceseId;
   String? _myChurchId;
   String? _myChurchName;
+  bool _isLoadingLocation = true;
 
   @override
   void initState() {
     super.initState();
     _fetchUserLocation();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _fetchUserLocation() async {
@@ -301,41 +325,46 @@ class _FilterSearchSheetState extends State<_FilterSearchSheet> {
       try {
         final data = await Supabase.instance.client
             .from('profiles')
-            .select('country_id, diocese_id, church_id, churches(name)') // Join to get church name
+            .select('country_id, diocese_id, church_id, churches(name)') 
             .eq('id', user.id)
-            .single();
+            .maybeSingle(); 
             
-        if (mounted) {
+        if (mounted && data != null) {
           setState(() {
-            _myCountryId = data['country_id'];
-            _myDioceseId = data['diocese_id'];
-            _myChurchId = data['church_id'];
-            // Access joined church name safely
+            _myCountryId = data['country_id']?.toString();
+            _myDioceseId = data['diocese_id']?.toString();
+            _myChurchId = data['church_id']?.toString();
             if (data['churches'] != null) {
                _myChurchName = data['churches']['name'];
             }
+            _isLoadingLocation = false;
           });
+        } else {
+          if (mounted) setState(() => _isLoadingLocation = false);
         }
       } catch (e) {
-        // silent
+        debugPrint("Error fetching filter location: $e");
+        if (mounted) setState(() => _isLoadingLocation = false);
       }
     }
   }
 
-  void _onSearch(String query) async {
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _performSearch(query);
+    });
+  }
+
+  void _performSearch(String query) async {
     if (query.isEmpty) {
-      setState(() {
-        _isSearching = false;
-        _searchResults = [];
-      });
+      if (mounted) setState(() { _isSearching = false; _searchResults = []; });
       return;
     }
     
-    setState(() => _isSearching = true);
+    if (mounted) setState(() => _isSearching = true);
     final results = await _masterService.searchLocations(query);
-    if (mounted) {
-      setState(() => _searchResults = results);
-    }
+    if (mounted) setState(() => _searchResults = results);
   }
 
   @override
@@ -348,14 +377,13 @@ class _FilterSearchSheetState extends State<_FilterSearchSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
       decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor, // Use scaffold bg for consistent look
+        color: theme.scaffoldBackgroundColor, 
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Handle
           Center(
             child: Container(width: 40, height: 4, decoration: BoxDecoration(color: theme.dividerColor, borderRadius: BorderRadius.circular(2))),
           ),
@@ -364,10 +392,9 @@ class _FilterSearchSheetState extends State<_FilterSearchSheet> {
           Text("Pilih Lokasi", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor)),
           const SizedBox(height: 16),
           
-          // Search Bar
           TextField(
             controller: _searchController,
-            onChanged: _onSearch,
+            onChanged: _onSearchChanged,
             style: GoogleFonts.outfit(color: titleColor),
             decoration: InputDecoration(
               prefixIcon: Icon(Icons.search, color: metaColor),
@@ -382,7 +409,6 @@ class _FilterSearchSheetState extends State<_FilterSearchSheet> {
           
           const SizedBox(height: 20),
           
-          // List
           Expanded(
             child: _isSearching ? _buildSearchResults(titleColor, metaColor) : _buildQuickOptions(titleColor, metaColor, theme),
           ),
@@ -392,15 +418,50 @@ class _FilterSearchSheetState extends State<_FilterSearchSheet> {
   }
 
   Widget _buildQuickOptions(Color titleColor, Color metaColor, ThemeData theme) {
+    if (_isLoadingLocation) {
+       return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
+    }
+
+    final hasLocationSet = _myCountryId != null;
+
     return ListView(
       children: [
         Text("OPSI CEPAT", style: GoogleFonts.outfit(color: metaColor, fontWeight: FontWeight.bold, fontSize: 12)),
         const SizedBox(height: 8),
         _buildOptionItem("Semua (Global)", null, null, Icons.public, titleColor, metaColor, theme),
-        // Note: Casting IDs to String for consistency in logic as UUIDs are strings or large INTs handled as string in filter
-        if (_myCountryId != null) _buildOptionItem("Negara Saya (Indonesia)", 'country', _myCountryId.toString(), Icons.flag, titleColor, metaColor, theme),
-        if (_myDioceseId != null) _buildOptionItem("Keuskupan Saya", 'diocese', _myDioceseId.toString(), Icons.account_balance, titleColor, metaColor, theme), 
-        if (_myChurchId != null) _buildOptionItem("Paroki Saya (${_myChurchName ?? 'Sendiri'})", 'church', _myChurchId.toString(), Icons.church, titleColor, metaColor, theme),
+        
+        if (hasLocationSet) ...[
+          if (_myCountryId != null) _buildOptionItem("Negara Saya (Indonesia)", 'country', _myCountryId, Icons.flag, titleColor, metaColor, theme),
+          if (_myDioceseId != null) _buildOptionItem("Keuskupan Saya", 'diocese', _myDioceseId, Icons.account_balance, titleColor, metaColor, theme), 
+          if (_myChurchId != null) _buildOptionItem("Paroki Saya (${_myChurchName ?? 'Sendiri'})", 'church', _myChurchId, Icons.church, titleColor, metaColor, theme),
+        ] else ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: InkWell(
+              onTap: () {
+                Navigator.pop(context); 
+                // PERBAIKAN: Navigasi tanpa const
+                Navigator.push(context, MaterialPageRoute(builder: (_) => EditProfilePage()));
+              },
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3))
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text("Lokasi profil belum diatur. Ketuk untuk mengatur.", style: GoogleFonts.outfit(color: Colors.orange[800], fontSize: 12))),
+                    const Icon(Icons.arrow_forward_ios, color: Colors.orange, size: 12)
+                  ],
+                ),
+              ),
+            ),
+          )
+        ]
       ],
     );
   }
@@ -422,7 +483,6 @@ class _FilterSearchSheetState extends State<_FilterSearchSheet> {
 
   Widget _buildOptionItem(String label, String? type, dynamic id, IconData icon, Color titleColor, Color metaColor, ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
-    
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),

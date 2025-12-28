@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mychatolic_app/core/app_colors.dart';
 import 'package:mychatolic_app/widgets/safe_network_image.dart';
 import 'package:mychatolic_app/pages/social_chat_detail_page.dart';
-import 'package:mychatolic_app/pages/other_user_profile_page.dart';
+import 'package:mychatolic_app/pages/profile_page.dart';
 import 'package:mychatolic_app/services/master_data_service.dart';
 import 'package:mychatolic_app/services/chat_service.dart';
 import 'package:mychatolic_app/models/country.dart';
@@ -392,12 +392,19 @@ class _SearchUserPageState extends State<SearchUserPage> {
                             onTap: () => _onCountryChanged(null),
                             borderRadius: BorderRadius.circular(20),
                             child: Container(
-                              padding: const EdgeInsets.all(6),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                shape: BoxShape.circle,
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.red.withOpacity(0.2)),
                               ),
-                              child: const Icon(Icons.close, size: 16, color: Colors.black54),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.refresh, size: 14, color: Colors.red),
+                                  const SizedBox(width: 4),
+                                  Text("Reset", style: GoogleFonts.outfit(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -426,7 +433,7 @@ class _SearchUserPageState extends State<SearchUserPage> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                       // Navigation to Profile
                       onTap: () {
-                         Navigator.push(context, MaterialPageRoute(builder: (_) => OtherUserProfilePage(userId: user['id'])));
+                         Navigator.push(context, MaterialPageRoute(builder: (_) => ProfilePage(userId: user['id'], isBackButtonEnabled: true)));
                       },
                       
                       // Avatar
@@ -448,26 +455,15 @@ class _SearchUserPageState extends State<SearchUserPage> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          if (showRoleBadge) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF9F1C),
-                                borderRadius: BorderRadius.circular(6)
-                              ),
-                              child: Text(
-                                role.toUpperCase(),
-                                style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black),
-                              ),
-                            )
-                          ]
+                          const SizedBox(width: 8),
+                          _buildRoleBadge(user),
                         ],
                       ),
                       
                       subtitle: Text(
-                         user['parish'] ?? "Paroki",
-                         style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13)
+                         "${user['parish'] ?? '-'}, ${user['diocese'] ?? '-'}",
+                         style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13),
+                         maxLines: 1, overflow: TextOverflow.ellipsis,
                       ),
                       
                       // Chat Icon -> Start Chat
@@ -485,6 +481,80 @@ class _SearchUserPageState extends State<SearchUserPage> {
                     );
                   },
                 ),
+    );
+  }
+
+  Widget _buildRoleBadge(Map<String, dynamic> user) {
+    final role = (user['role'] ?? 'umat').toString().toLowerCase();
+    final status = (user['verification_status'] ?? 'unverified').toString().toLowerCase();
+    final isApproved = status == 'approved';
+
+    // 1. Special Roles
+    if (['pastor', 'suster', 'bruder', 'katekis', 'imam'].contains(role)) {
+       Color badgeColor = const Color(0xFF0F0C29);
+       Color textColor = Colors.white;
+       IconData icon = Icons.verified_user;
+       String label = role.characters.first.toUpperCase() + role.substring(1); 
+       
+       if (role == 'pastor' || role == 'imam') {
+         badgeColor = const Color(0xFF003366);
+         icon = Icons.health_and_safety_rounded;
+       } else if (role == 'suster') {
+         badgeColor = const Color(0xFF5D4037);
+         icon = Icons.volunteer_activism;
+       } 
+
+       return Container(
+         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+         decoration: BoxDecoration(
+           color: badgeColor,
+           borderRadius: BorderRadius.circular(4),
+         ),
+         child: Row(
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             if (isApproved) ...[
+                Icon(icon, color: Colors.amber, size: 10),
+                const SizedBox(width: 4),
+             ],
+             Text(
+               label.toUpperCase(), 
+               style: GoogleFonts.outfit(fontSize: 9, color: textColor, fontWeight: FontWeight.bold)
+             ),
+           ],
+         ),
+       );
+    }
+    
+    // 2. Umat (100% Katolik)
+    if (isApproved) {
+       return Container(
+         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+         decoration: BoxDecoration(
+           color: Colors.green.withOpacity(0.1),
+           borderRadius: BorderRadius.circular(4),
+         ),
+         child: Row(
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             const Icon(Icons.verified, color: Colors.green, size: 10),
+             const SizedBox(width: 2),
+             Text("100% Katolik", style: GoogleFonts.outfit(fontSize: 9, color: Colors.green, fontWeight: FontWeight.bold)),
+           ],
+         ),
+       );
+    }
+    
+    // 3. Unverified / Normal Umat -> No Badge or customized?
+    // Request said: "100% Katolik" or "Umat"
+    // Let's show "Umat" for unverified to be safe + visual feedback.
+    return Container(
+       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+       decoration: BoxDecoration(
+         color: Colors.grey.withOpacity(0.1),
+         borderRadius: BorderRadius.circular(4),
+       ),
+       child: Text("Umat", style: GoogleFonts.outfit(fontSize: 9, color: Colors.grey)),
     );
   }
 

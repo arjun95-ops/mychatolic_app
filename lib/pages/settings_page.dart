@@ -20,10 +20,33 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showEthnicity = false;
   bool _isLoading = true;
 
+  // Upload Quality State
+  bool _isHighQualityUpload = false;
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _isHighQualityUpload = prefs.getBool('high_quality_upload') ?? false;
+      });
+    }
+  }
+
+  Future<void> _toggleUploadQuality(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('high_quality_upload', value);
+    if (mounted) {
+      setState(() {
+        _isHighQualityUpload = value;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -46,7 +69,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
-      print("Error loading privacy settings: $e");
+      print("Error loading settings: $e");
     }
   }
 
@@ -149,7 +172,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     _buildSwitchTile(
                       "Tampilkan Usia di Profil",
-                      "Izinkan publik melihat usia anda", // Changed subtitle to reflect logic
+                      "Izinkan publik melihat usia anda",
                       _showAge, 
                       (val) => _togglePrivacy('is_age_visible', val), 
                       context
@@ -164,6 +187,22 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ],
                 ),
+            ),
+
+            const SizedBox(height: 32),
+
+            // SECTION: PENGGUNAAN DATA
+            _buildSectionTitle("Penggunaan Data", context),
+            const SizedBox(height: 8),
+            Card(
+              child: SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                title: Text("Upload Kualitas Tinggi (HD)", style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                subtitle: Text("Gambar lebih tajam, namun memakan lebih banyak kuota data.", style: GoogleFonts.outfit(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color)),
+                value: _isHighQualityUpload,
+                onChanged: _toggleUploadQuality,
+                activeColor: Theme.of(context).primaryColor,
+              ),
             ),
 
             const SizedBox(height: 32),
