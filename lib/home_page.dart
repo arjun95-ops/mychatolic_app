@@ -4,22 +4,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // Pages
 import 'package:mychatolic_app/pages/home_screen.dart'; 
 import 'package:mychatolic_app/pages/create_post_screen.dart'; 
-import 'package:mychatolic_app/pages/church_list_page.dart'; 
+import 'package:mychatolic_app/pages/schedule_page.dart'; 
 import 'package:mychatolic_app/pages/consilium/consilium_page.dart';
 import 'package:mychatolic_app/pages/profile_page.dart';
 import 'package:mychatolic_app/pages/radar_page.dart';
-import 'package:mychatolic_app/core/app_colors.dart';
 import 'package:mychatolic_app/pages/social_inbox_page.dart';
-
-class ChatPlaceholderPage extends StatelessWidget {
-  const ChatPlaceholderPage({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: Text("Chat Coming Soon", style: TextStyle(color: Colors.grey))),
-    );
-  }
-}
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -73,13 +62,14 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Pastikan urutan children sesuai dengan BottomNavigationBar items
     final List<Widget> children = [
       HomeScreen(key: _homeScreenKey),
-      const ChurchListPage(),    
-      const RadarPage(),        
-      const ConsiliumPage(),    
-      const SocialInboxPage(),  
-      ProfilePage(key: _profilePageKey),       
+      const SchedulePage(),     // Index 1: Jadwal
+      const RadarPage(),        // Index 2: Radar
+      const ConsiliumPage(),    // Index 3: Consilium
+      const SocialInboxPage(),  // Index 4: Chat
+      ProfilePage(key: _profilePageKey), // Index 5: Profil
     ];
 
     return Scaffold(
@@ -90,7 +80,7 @@ class _HomePageState extends State<HomePage> {
       ),
       floatingActionButton: _currentIndex == 0 
           ? FloatingActionButton(
-              heroTag: 'home_fab', // <--- PERBAIKAN DI SINI (Tag Unik)
+              heroTag: 'home_fab', 
               onPressed: () async {
                  final result = await Navigator.push(
                    context, 
